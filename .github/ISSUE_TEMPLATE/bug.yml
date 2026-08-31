@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a defect in the Example client configuration or validation.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, Secret values, private keys, recovery material, or sensitive logs.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Client values
+        - Flux composition
+        - Validation and CI
+        - Platform compatibility
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Describe the failure and its impact without sensitive data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and validation output
+      description: Include deterministic local commands and redacted output. Do not contact a cluster solely to complete this form.
+    validations:
+      required: true
+  - type: input
+    id: platform-pin
+    attributes:
+      label: Exact platform pin
+      placeholder: vX.Y.Z
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed all secret and personal data from this report.
+          required: true

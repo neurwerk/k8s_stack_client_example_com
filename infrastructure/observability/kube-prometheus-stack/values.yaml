@@ -1,0 +1,32 @@
+# ── Client overrides for monitor-kube-prometheus-stack ────────────────────────
+# The example client has no real SMTP destination, so it explicitly opts out of
+# the platform-default email receiver.
+
+monitorKubePrometheusStack:
+  alerting:
+    email:
+      enabled: false
+
+# K3s embeds these components instead of exposing the standalone scrape targets.
+kube-prometheus-stack:
+  kubeControllerManager:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kubeProxy:
+    enabled: false
+
+# Example: override Prometheus retention or storage size.
+#
+# Uncomment and adjust as needed:
+#
+# kube-prometheus-stack:
+#   prometheus:
+#     prometheusSpec:
+#       retention: 30d
+#       storageSpec:
+#         volumeClaimTemplate:
+#           spec:
+#             resources:
+#               requests:
+#                 storage: 100Gi

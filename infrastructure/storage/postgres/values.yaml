@@ -1,0 +1,7 @@
+postgresAuth:
+  persistence:
+    storageClassName: infra-rook-ceph-rbd
+
+postgresOperations:
+  persistence:
+    storageClassName: infra-rook-ceph-rbd

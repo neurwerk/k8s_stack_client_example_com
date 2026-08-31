@@ -1,0 +1,314 @@
+# Shared non-secret client configuration consumed by app and infrastructure Kustomizations.
+# Keep each client-wide fact here once; product values contain only product-specific overrides.
+publicCertificates:
+  useProduction: false
+
+#
+# ── Resource sizing + replica counts for all charts ───────────────────────────
+# This follows base/releases/shared/resources.yaml with client-specific overrides.
+# Modify for your deployment; keep structure aligned with base.
+#
+# NOTE: Charts with hardcoded replicas (currently keycloak):
+#   - authKeycloak.keycloak: replicas: 1 (hardcoded)
+# To make these configurable, add a .Values reference in the StatefulSet/Deployment template.
+# ── auth-keycloak ──────────────────────────────────────────────────────────
+# NOTE: The Keycloak StatefulSet has replicas: 1 HARDCODED
+authKeycloak:
+  hostname: "auth.example.com"
+  librechatRedirectUri: "https://chat.example.com/oauth/openid/callback"
+  librechatWebOrigin: "https://chat.example.com"
+  librechatAdminRedirectUri: "https://chat.example.com/api/admin/oauth/openid/callback"
+  librechatAdminWebOrigin: "https://chat-admin.example.com"
+  agentgatewayRedirectUri: ""
+  agentgatewayWebOrigin: ""
+  studioRedirectUri: "https://studio.example.com/auth/callback"
+  studioWebOrigin: "https://studio.example.com"
+  keycloakApiKeyBridgeRedirectUri: ""
+  keycloakApiKeyBridgeWebOrigin: ""
+  difyRedirectUri: "https://dify.example.com/console/api/oauth/authorize/keycloak"
+  difyWebOrigin: "https://dify.example.com"
+  realm: example
+  agentgatewayClientId: agentgateway
+  keycloakApiKeyBridgeClientId: keycloak-api-key-bridge
+  librechatClientId: librechat
+  studioClientId: studio
+  difyAgentgatewayClientRoles:
+    - llm:invoke
+    - model:remote/openrouter/deepseek-v4-flash:invoke
+  agentgatewayClientRoles:
+    - llm:invoke
+    - model:remote/openrouter/ox-alpha:invoke
+    - model:remote/openrouter/deepseek-v4-flash-0731:invoke
+    - model:remote/openrouter/mimo-v2.5:invoke
+    - model:remote/openrouter/hy3:invoke
+    - model:remote/openrouter/deepseek-v4-flash:invoke
+    - model:remote/openrouter/nemotron-3-ultra-free:invoke
+    - model:remote/openrouter/gpt-5.6-luna:invoke
+    - model:remote/openrouter/glm-5.2:invoke
+    - model:remote/openrouter/gemini-3.7-flash:invoke
+    - model:remote/openrouter/deepseek-v4-pro-0423:invoke
+    - model:remote/openrouter/minimax-m3:invoke
+    - model:remote/openrouter/laguna-s-2.1-free:invoke
+    - model:remote/openrouter/claude-opus-5:invoke
+    - model:remote/openrouter/gpt-5.6-sol:invoke
+    - model:remote/openrouter/kimi-k3:invoke
+    - model:remote/openrouter/claude-sonnet-5:invoke
+    - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
+    - model:remote/openrouter/deepseek-v4-pro-0813:invoke
+    - model:remote/openrouter/gemini-3-flash-preview:invoke
+    - model:remote/openrouter/gemini-2.5-flash-lite:invoke
+    - model:local/llama3.2-3b:invoke
+  agentgatewayAccessGroups:
+    /access/librechat-admins:
+      - llm:invoke
+      - model:remote/openrouter/ox-alpha:invoke
+      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
+      - model:remote/openrouter/mimo-v2.5:invoke
+      - model:remote/openrouter/hy3:invoke
+      - model:remote/openrouter/deepseek-v4-flash:invoke
+      - model:remote/openrouter/nemotron-3-ultra-free:invoke
+      - model:remote/openrouter/gpt-5.6-luna:invoke
+      - model:remote/openrouter/glm-5.2:invoke
+      - model:remote/openrouter/gemini-3.7-flash:invoke
+      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
+      - model:remote/openrouter/minimax-m3:invoke
+      - model:remote/openrouter/laguna-s-2.1-free:invoke
+      - model:remote/openrouter/claude-opus-5:invoke
+      - model:remote/openrouter/gpt-5.6-sol:invoke
+      - model:remote/openrouter/kimi-k3:invoke
+      - model:remote/openrouter/claude-sonnet-5:invoke
+      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
+      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
+      - model:remote/openrouter/gemini-3-flash-preview:invoke
+      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
+      - model:local/llama3.2-3b:invoke
+    /access/librechat-users:
+      - llm:invoke
+      - model:remote/openrouter/ox-alpha:invoke
+      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
+      - model:remote/openrouter/mimo-v2.5:invoke
+      - model:remote/openrouter/hy3:invoke
+      - model:remote/openrouter/deepseek-v4-flash:invoke
+      - model:remote/openrouter/nemotron-3-ultra-free:invoke
+      - model:remote/openrouter/gpt-5.6-luna:invoke
+      - model:remote/openrouter/glm-5.2:invoke
+      - model:remote/openrouter/gemini-3.7-flash:invoke
+      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
+      - model:remote/openrouter/minimax-m3:invoke
+      - model:remote/openrouter/laguna-s-2.1-free:invoke
+      - model:remote/openrouter/claude-opus-5:invoke
+      - model:remote/openrouter/gpt-5.6-sol:invoke
+      - model:remote/openrouter/kimi-k3:invoke
+      - model:remote/openrouter/claude-sonnet-5:invoke
+      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
+      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
+      - model:remote/openrouter/gemini-3-flash-preview:invoke
+      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
+      - model:local/llama3.2-3b:invoke
+    /access/platform-admins:
+      - llm:invoke
+      - model:remote/openrouter/ox-alpha:invoke
+      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
+      - model:remote/openrouter/mimo-v2.5:invoke
+      - model:remote/openrouter/hy3:invoke
+      - model:remote/openrouter/deepseek-v4-flash:invoke
+      - model:remote/openrouter/nemotron-3-ultra-free:invoke
+      - model:remote/openrouter/gpt-5.6-luna:invoke
+      - model:remote/openrouter/glm-5.2:invoke
+      - model:remote/openrouter/gemini-3.7-flash:invoke
+      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
+      - model:remote/openrouter/minimax-m3:invoke
+      - model:remote/openrouter/laguna-s-2.1-free:invoke
+      - model:remote/openrouter/claude-opus-5:invoke
+      - model:remote/openrouter/gpt-5.6-sol:invoke
+      - model:remote/openrouter/kimi-k3:invoke
+      - model:remote/openrouter/claude-sonnet-5:invoke
+      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
+      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
+      - model:remote/openrouter/gemini-3-flash-preview:invoke
+      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
+      - model:local/llama3.2-3b:invoke
+    /access/studio-users:
+      - llm:invoke
+      - model:remote/openrouter/ox-alpha:invoke
+      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
+      - model:remote/openrouter/mimo-v2.5:invoke
+      - model:remote/openrouter/hy3:invoke
+      - model:remote/openrouter/deepseek-v4-flash:invoke
+      - model:remote/openrouter/nemotron-3-ultra-free:invoke
+      - model:remote/openrouter/gpt-5.6-luna:invoke
+      - model:remote/openrouter/glm-5.2:invoke
+      - model:remote/openrouter/gemini-3.7-flash:invoke
+      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
+      - model:remote/openrouter/minimax-m3:invoke
+      - model:remote/openrouter/laguna-s-2.1-free:invoke
+      - model:remote/openrouter/claude-opus-5:invoke
+      - model:remote/openrouter/gpt-5.6-sol:invoke
+      - model:remote/openrouter/kimi-k3:invoke
+      - model:remote/openrouter/claude-sonnet-5:invoke
+      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
+      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
+      - model:remote/openrouter/gemini-3-flash-preview:invoke
+      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
+      - model:local/llama3.2-3b:invoke
+  keycloak:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+# ── auth-keycloak-api-key-bridge ───────────────────────────────────────────
+# NOTE: replicas is HARDCODED at 1 in templates/deployment.yaml → not configurable
+authKeycloakApiKeyBridge:
+  hostname: "api-keys.example.com"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+infraAgentgatewayWrapper:
+  hostname: "agent.example.com"
+infraRookCeph:
+  objectStore:
+    publicHostname: "files.chat.example.com"
+frontendLibrechat:
+  hostname: "chat.example.com"
+  adminPanel:
+    hostname: "chat-admin.example.com"
+frontendDify:
+  hostname: "dify.example.com"
+frontendStudio:
+  studio:
+    hostname: "studio.example.com"
+    oidcAuthority: "https://auth.example.com/realms/example"
+    oidcClientId: "studio"
+  api:
+    keycloakServerUrl: "http://auth-keycloak-keycloak-service.auth-keycloak.svc.cluster.local"
+    keycloakRealm: "example"
+    keycloakClientId: "studio"
+# ── monitor-langfuse (subchart) ────────────────────────────────────────────
+# Subchart fields:
+#   langfuse.replicas: 1          (global — falls back to both web + worker)
+#   langfuse.web.replicas: null   (overrides global for web, if set)
+#   langfuse.worker.replicas: null (overrides global for worker, if set)
+#   clickhouse.replicaCount: 1    (set to 1 for single-node, default in subchart is 3)
+monitorLangfuseWrapper:
+  hostname: "monitor.example.com"
+  otelCollector:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+langfuse:
+  langfuse:
+    nextauth:
+      url: "https://monitor.example.com"
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+  clickhouse:
+    replicaCount: 1
+    resourcesPreset: custom
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+# MCP is disabled in the example by default. Add approved servers here; put
+# external credentials entered through the OpenBao setup operator.
+mcp:
+  enabled: false
+  servers: []
+guardrails:
+  llmPolicyEngine:
+    enabled: true # enable extProc AgentgatewayPolicy + virtual model
+# ── Shared PII Engine entity policy ──────────────────────────────────────────
+monitorPiiEngine:
+  policy:
+    pii:
+      analyzerLanguages: [en]
+      scoreThreshold: 0.5
+      timeout: 600
+      defaultAction: block
+      # Trusted local reroutes can receive the original PII.
+      maskOnReroute: false
+      # ── Entity policy — one entry per entity type ──────────────────────────
+      entityPolicies:
+        - {entityType: SENSITIVE_TEXT, action: reversible_replace}
+        - {entityType: PERSON_NAME, action: reversible_replace}
+        - {entityType: PHONE_NUMBER, action: reversible_replace}
+        - {entityType: EMAIL_ADDRESS, action: reversible_replace}
+        - {entityType: STREET_ADDRESS, action: reversible_replace}
+        - {entityType: POSTAL_CODE, action: reversible_replace}
+        - {entityType: CITY, action: reversible_replace}
+        - {entityType: DATE_OF_BIRTH, action: reversible_replace}
+        - {entityType: PLACE_OF_BIRTH, action: reversible_replace}
+        - {entityType: BANK_ACCOUNT, action: reversible_replace}
+        - {entityType: IBAN, action: reversible_replace}
+        - {entityType: CREDIT_CARD_NUMBER, action: reversible_replace}
+        - {entityType: PASSPORT_NUMBER, action: reversible_replace}
+        - {entityType: DRIVERS_LICENSE_NUMBER, action: reversible_replace}
+        - {entityType: NATIONAL_ID_NUMBER, action: reversible_replace}
+        - {entityType: BSN, action: reversible_replace}
+        - {entityType: TAX_ID, action: reversible_replace}
+        - {entityType: VAT_NUMBER, action: reversible_replace}
+        - {entityType: HEALTH_INSURANCE_ID, action: reversible_replace}
+        - {entityType: MEDICAL_RECORD_ID, action: reversible_replace}
+        - {entityType: USERNAME, action: reversible_replace}
+        - {entityType: PASSWORD_OR_SECRET, action: reversible_replace}
+        - {entityType: VEHICLE_REGISTRATION, action: reversible_replace}
+        - {entityType: SIGNATURE, action: reversible_replace}
+        - entityType: CREDENTIAL
+          action: reversible_replace
+          patterns:
+            - |-
+              \bAKIA[0-9A-Z]{16}\b
+            - |-
+              \bsk-[a-zA-Z0-9_-]{20,}\b
+            - |-
+              \beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b
+            - |-
+              -----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----
+            - |-
+              (?i)(bearer|authorization)[:\s]+[A-Za-z0-9\-._~+/]{20,}=*
+            - |-
+              (?i)(mongodb|postgres|postgresql|mysql|redis|amqp|mssql)://[^\s\"'<>]{10,}
+            - |-
+              (?i)(password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*["\']?[^\s"\']{8,}
+            - |-
+              (?i)(my|the|your|his|her|our|their)\s+(password|passwd|secret|passcode|pin|token)\s+(is|was|=|:)\s+\S{4,}
+        - {entityType: IP_ADDRESS, action: pass}
+# ── agentgateway (subchart) ─────────────────────────────────────────────────
+# Subchart field: controller.replicaCount: 1
+agentgateway:
+  controller:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  proxy:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi

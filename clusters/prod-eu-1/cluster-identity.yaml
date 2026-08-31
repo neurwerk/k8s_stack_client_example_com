@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neurwerk-stack-identity
+  namespace: flux-system
+data:
+  schemaVersion: "1"
+  client: client_example_com
+  environment: production
+  clusterId: 5cb732f5-98bd-4f6c-bf01-779112214e46

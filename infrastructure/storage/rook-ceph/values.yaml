@@ -1,0 +1,12 @@
+# Per-app configuration for infra-rook-ceph.
+#
+# Rook will not infer a storage device. Set both values to the Kubernetes node
+# name and stable raw-disk path approved for this client before deployment.
+#
+infraRookCeph:
+  objectStore:
+    externalGateway:
+      enabled: true
+  # storage:
+  #   nodeName: "storage-node.example.com"
+  #   devicePath: "/dev/disk/by-id/<approved-raw-disk>"

@@ -1,0 +1,14 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: k8s-stack
+  namespace: flux-system
+spec:
+  interval: 30s
+  url: https://github.com/neurwerk/k8s_stack_base.git
+  ref:
+    tag: v0.2.6
+  verify:
+    mode: Tag
+    secretRef:
+      name: k8s-stack-release-trust

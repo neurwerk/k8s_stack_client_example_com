@@ -1,0 +1,2 @@
+# ── Example client override for monitor-agentgateway-extproc ─────────────────
+# The adapter has no policy configuration. Policy is owned by monitorPiiEngine.

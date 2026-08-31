@@ -1,0 +1,35 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: client-app-values
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./apps
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn:
+    - name: namespaces
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: client-infrastructure-values
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./infrastructure
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn:
+    - name: namespaces
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system

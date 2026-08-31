@@ -1,0 +1,5 @@
+# Mise / asdf tool versions
+# Install with: mise install  (or asdf install)
+kustomize 5.8.1
+kubeconform 0.8.0
+pre-commit 4.6.1

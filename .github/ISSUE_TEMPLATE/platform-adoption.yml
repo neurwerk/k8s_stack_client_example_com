@@ -1,0 +1,58 @@
+name: Platform adoption
+description: Propose adopting an exact signed platform release for the Example client.
+title: "[Platform adoption]: "
+body:
+  - type: markdown
+    attributes:
+      value: Adoption requires an immutable signed tag, a published full GitHub Release, explicit compatibility, and reviewed migration evidence. Opening this issue does not authorize deployment.
+  - type: input
+    id: current-version
+    attributes:
+      label: Current exact pin
+      placeholder: vX.Y.Z
+    validations:
+      required: true
+  - type: input
+    id: target-version
+    attributes:
+      label: Target exact pin
+      placeholder: vX.Y.Z
+    validations:
+      required: true
+  - type: dropdown
+    id: target-state
+    attributes:
+      label: Target state
+      options:
+        - Existing installation with retained state
+        - Operator-attested empty target eligible for fresh installation
+        - Unknown - adoption must remain blocked
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Release and compatibility evidence
+      description: Link the published release and summarize manifest `upgradesFrom`, signer verification, migration actions, prerequisites, and recovery classification.
+    validations:
+      required: true
+  - type: textarea
+    id: rollout
+    attributes:
+      label: Pre/post checks and staged rollout
+      description: Include client-value ordering and non-secret checks. Do not include deployment credentials or claim that this issue authorizes reconciliation.
+    validations:
+      required: true
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Adoption gates
+      options:
+        - label: The target is newer than the current pin and is an exact strict SemVer tag.
+          required: true
+        - label: I reviewed stateful, CRD, API, secret-reference, and resource-identity effects.
+          required: true
+        - label: "Every changed pin requires reviewer approval through the protected `platform-adoption` environment."
+          required: true
+        - label: "If `upgradesFrom` omits the current version, the PR has `platform: fresh-install` intent and the environment reviewer must independently confirm the operator's empty-target attestation."
+          required: true

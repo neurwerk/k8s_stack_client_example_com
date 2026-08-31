@@ -1,0 +1,4 @@
+# Client-specific overrides for Dify
+frontendDify:
+  config:
+    AUTO_SETUP_ADMIN_EMAIL: "breakglass@dify.example.com"

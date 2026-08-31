@@ -1,0 +1,47 @@
+name: Task
+description: Propose a bounded change to the Example client repository.
+title: "[Task]: "
+body:
+  - type: markdown
+    attributes:
+      value: Tasks must preserve the client/platform ownership boundary and keep confidential values out of Git.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Client values
+        - Flux composition
+        - Validation and CI
+        - Platform compatibility
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Required outcome
+      description: State the observable result and what is out of scope.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: List deterministic checks and review evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and migration impact
+      description: Cover platform pins, state, APIs, resource identities, and staged reconciliation, or state why each is unaffected.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: This task does not request secrets in Git or treat PR creation as deployment authorization.
+          required: true

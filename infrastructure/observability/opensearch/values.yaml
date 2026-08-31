@@ -1,0 +1,4 @@
+# Client-level overrides for OpenSearch
+opensearch:
+  persistence:
+    size: 20Gi

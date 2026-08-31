@@ -1,0 +1,7 @@
+# Replace this documentation-only address with the K3s server's reserved IP
+# before deploying a client cluster.
+infraOpenbaoWrapper:
+  kubernetesApi:
+    endpoint:
+      address: 192.0.2.10
+      port: 6443

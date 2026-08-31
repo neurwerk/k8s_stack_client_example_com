@@ -1,0 +1,8 @@
+# Non-secret Langfuse initialization identity for this client.
+monitorLangfuseWrapper:
+  initOrgId: "langfuse-org"
+  initOrgName: "Example Client"
+  initProjectId: "default-project"
+  initProjectName: "Default Project"
+  initUserEmail: "admin@example.com"
+  initUserName: "Admin"

@@ -1,0 +1,4 @@
+certManager:
+  email: admin@example.com
+  dnsZones:
+    - example.com

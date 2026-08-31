@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitor-kube-prometheus-stack
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: client-values
+    files:
+      - values.yaml=../../../config/client.yaml
+  - name: kube-prometheus-stack-product-values
+    files:
+      - values.yaml=values.yaml

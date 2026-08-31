@@ -1,0 +1,192 @@
+# Client-owned configuration shared by the core and Code Interpreter releases.
+frontendLibrechat:
+  app:
+    replicas: 1
+    imagePersistence:
+      size: 10Gi
+      storageClassName: infra-rook-ceph-rbd
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  adminPanel:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  agentGateway:
+    streaming: true
+  codeInterpreter:
+    # Enable only when the optional platform release package is composed.
+    enabled: false
+    url: http://librechat-code-interpreter-api.librechat-code-interpreter.svc.cluster.local:3112/v1
+    jwtAlgorithm: EdDSA
+    jwtAudience: codeapi
+    jwtIssuer: librechat
+    jwtKeyId: librechat-code-interpreter-v1
+    jwtSingleTenantId: librechat
+    namespace: librechat-code-interpreter
+    podSelector:
+      app.kubernetes.io/name: librechat-code-interpreter-api
+    port: 3112
+  meilisearch:
+    replicas: 1
+    persistence:
+      size: 10Gi
+      storageClassName: infra-rook-ceph-rbd
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  objectStorage:
+    enabled: true
+    storageClassName: infra-rook-ceph-object-bucket
+  rag:
+    # Enable only with a configured embedding backend and the optional release package.
+    enabled: false
+    useFullContext: false
+  ragApi:
+    replicas: 1
+    image:
+      variant: lite
+    embeddings:
+      provider: openai
+      model: text-embedding-3-small
+      # Keep blank until AgentGateway exposes a dedicated embedding route.
+      openaiBaseUrl: ""
+    externalHttpsEgress:
+      enabled: false
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+  valkey:
+    replicas: 1
+    persistence:
+      size: 5Gi
+      storageClassName: infra-rook-ceph-rbd
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+frontendLibrechatCodeInterpreter:
+  hardenedSandboxMode: true
+  ptcMode: replay
+  auth:
+    provider: librechat-jwt
+    issuer: librechat
+    audience: codeapi
+    allowedAlgorithms: EdDSA
+    keyId: librechat-code-interpreter-v1
+    singleTenantId: librechat
+  networkPolicy:
+    librechatNamespace: frontend-librechat
+    librechatPodLabels:
+      app.kubernetes.io/name: frontend-librechat
+  objectStorage:
+    storageClassName: infra-rook-ceph-object-bucket
+  api:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  egressGateway:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+  fileServer:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+  toolCallServer:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+  valkey:
+    persistence:
+      size: 5Gi
+      storageClassName: infra-rook-ceph-rbd
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  worker:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+  sandbox:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 3Gi
+  scheduling:
+    nodeSelector:
+      code-interpreter.neurwerk.com/dedicated: "true"
+    tolerations:
+      - key: code-interpreter.neurwerk.com/dedicated
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+  packages:
+    persistence:
+      size: 20Gi
+      storageClassName: infra-rook-ceph-rbd
+    initJob:
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+
+externalGateway:
+  enabled: true

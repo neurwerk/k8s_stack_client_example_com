@@ -1,0 +1,106 @@
+name: Platform Compatibility
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-compatibility-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      platform_pin_changed: ${{ steps.classify.outputs.platform_pin_changed }}
+    steps:
+      - name: Checkout trusted base revision
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Classify platform pin
+        id: classify
+        run: >-
+          uv run --frozen python scripts/check_platform_compatibility.py
+          --base-sha "$BASE_SHA"
+          --head-sha "$HEAD_SHA"
+          --pull-request-number "$PR_NUMBER"
+          --labels-json "$PR_LABELS_JSON"
+          --classify-only
+          --github-output "$GITHUB_OUTPUT"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PLATFORM_RELEASE_SIGNER_FINGERPRINT: ${{ vars.PLATFORM_RELEASE_SIGNER_FINGERPRINT }}
+
+  platform_adoption:
+    needs: classify
+    if: needs.classify.outputs.platform_pin_changed == 'true'
+    runs-on: ubuntu-latest
+    environment: platform-adoption
+    steps:
+      - name: Checkout trusted base revision
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Verify authorized platform adoption
+        run: >-
+          uv run --frozen python scripts/check_platform_compatibility.py
+          --base-sha "$BASE_SHA"
+          --head-sha "$HEAD_SHA"
+          --pull-request-number "$PR_NUMBER"
+          --labels-json "$PR_LABELS_JSON"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PLATFORM_RELEASE_SIGNER_FINGERPRINT: ${{ vars.PLATFORM_RELEASE_SIGNER_FINGERPRINT }}
+          GITHUB_TOKEN: ${{ github.token }}
+
+  gate:
+    needs: [classify, platform_adoption]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report platform compatibility gate
+        run: |
+          if [[ "$CLASSIFY_RESULT" != "success" ]]; then
+            echo "Platform pin classification failed."
+            exit 1
+          fi
+          if [[ "$PLATFORM_PIN_CHANGED" == "true" && "$ADOPTION_RESULT" != "success" ]]; then
+            echo "A changed platform pin requires approved, successful platform-adoption verification."
+            exit 1
+          fi
+          echo "Platform compatibility gate passed."
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          PLATFORM_PIN_CHANGED: ${{ needs.classify.outputs.platform_pin_changed }}
+          ADOPTION_RESULT: ${{ needs.platform_adoption.result }}

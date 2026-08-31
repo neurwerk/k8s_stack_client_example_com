@@ -1,0 +1,17 @@
+/.git_backup*/
+
+# Environment
+.env
+
+# macOS
+.DS_Store
+
+# Test and Python artifacts
+.pytest_cache/
+__pycache__/
+*.pyc
+
+.decrypted~
+
+# Local OpenBao custody material
+custodian-*.asc

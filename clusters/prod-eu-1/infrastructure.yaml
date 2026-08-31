@@ -1,0 +1,24 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 1h
+  path: ./releases/infrastructure
+  timeout: 60m
+  wait: true
+  healthCheckExprs:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      inProgress: '!status.conditions.exists(e, e.type == ''Programmed'' && e.observedGeneration == metadata.generation) || status.listeners.size() != spec.listeners.size() || status.listeners.exists(l, !l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation)) || status.listeners.exists(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''False'' && e.reason == ''InvalidCertificateRef''))'
+      failed: 'status.listeners.exists(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''False'' && e.reason == ''RefNotPermitted''))'
+      current: 'status.conditions.exists(e, e.type == ''Programmed'' && e.observedGeneration == metadata.generation && e.status == ''True'') && status.listeners.size() == spec.listeners.size() && status.listeners.all(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''True''))'
+  prune: true
+  dependsOn:
+    - name: namespaces
+    - name: client-infrastructure-values
+  sourceRef:
+    kind: GitRepository
+    name: k8s-stack
+    namespace: flux-system
