@@ -93,10 +93,10 @@ platform-compatibility: ## Verify a changed platform pin against its public rele
 	@if [ -z "$(UV)" ]; then printf "$(RED)uv is required$(RESET)\n"; exit 1; fi
 	@if [ -z "$(BASE_SHA)" ]; then printf "$(RED)BASE_SHA is required$(RESET)\n"; exit 1; fi
 	@if [ -z "$(HEAD_SHA)" ]; then printf "$(RED)HEAD_SHA is required$(RESET)\n"; exit 1; fi
+	@if [ -n "$(PR_NUMBER)" ] && [ -z "$(MERGE_SHA)" ]; then printf "$(RED)MERGE_SHA is required with PR_NUMBER$(RESET)\n"; exit 1; fi
 	@$(UV) run --frozen python scripts/check_platform_compatibility.py \
 		--base-sha "$(BASE_SHA)" --head-sha "$(HEAD_SHA)" \
-		$(if $(PR_NUMBER),--pull-request-number "$(PR_NUMBER)",) \
-		--labels-json "$${PR_LABELS_JSON:-[]}"
+		$(if $(PR_NUMBER),--pull-request-number "$(PR_NUMBER)" --merge-sha "$(MERGE_SHA)",)
 
 check: tools yaml-lint kustomize-validate contract-check ## Run all validation checks
 

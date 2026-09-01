@@ -15,6 +15,7 @@ env:
 
 jobs:
   validate:
+    name: Required CI
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

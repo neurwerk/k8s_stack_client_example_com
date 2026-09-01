@@ -1,0 +1,43 @@
+name: Refresh Platform Compatibility
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  discover:
+    name: Discover open pull requests
+    runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.pull_requests.outputs.count }}
+      matrix: ${{ steps.pull_requests.outputs.matrix }}
+    steps:
+      - name: Resolve open pull requests targeting main
+        id: pull_requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          matrix="$(
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100" \
+              --jq '[.[][] | {pull_request_number: .number}]' | jq -c .
+          )"
+          printf 'count=%s\n' "$(jq 'length' <<<"$matrix")" >> "$GITHUB_OUTPUT"
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+
+  evaluate:
+    name: Refresh pull request ${{ matrix.pull_request_number }}
+    needs: discover
+    if: needs.discover.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    uses: ./.github/workflows/platform-compatibility-evaluate.yaml
+    with:
+      pull_request_number: ${{ matrix.pull_request_number }}
+      status_app_client_id: ${{ vars.PLATFORM_STATUS_APP_CLIENT_ID }}

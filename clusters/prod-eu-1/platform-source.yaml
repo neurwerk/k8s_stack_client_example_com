@@ -1,6 +1,9 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
+  annotations:
+    platform.neurwerk.com/adoption-mode: fresh-install
+    platform.neurwerk.com/adoption-target: v0.2.6
   name: k8s-stack
   namespace: flux-system
 spec:
