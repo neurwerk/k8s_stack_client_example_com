@@ -16,9 +16,10 @@ Describe the intended change to the Example client configuration and why it is n
 - Current exact signed platform pin: `<!-- vX.Y.Z -->`
 - Proposed exact signed platform pin: `<!-- unchanged or vX.Y.Z -->`
 - [ ] The pin remains one exact `vX.Y.Z` tag with Flux tag verification enabled.
+- [ ] `platform.neurwerk.com/adoption-target` equals the proposed tag and `platform.neurwerk.com/adoption-mode` is exactly `upgrade` or `fresh-install`.
 - [ ] I reviewed the target release manifest, published GitHub Release, and `release/migrations/vX.Y.Z.md`.
 - [ ] Every changed pin receives reviewer approval through the protected `platform-adoption` environment.
-- [ ] If the target omits the current version from `upgradesFrom`, the `platform: fresh-install` intent label is present and the environment reviewer has independently confirmed the operator's empty-target attestation.
+- [ ] For `upgrade`, the target manifest lists the current pin in `upgradesFrom`; for `fresh-install`, the environment reviewer independently confirmed the operator's empty-target attestation.
 
 Compatibility or fresh-install evidence:
 

@@ -54,5 +54,5 @@ body:
           required: true
         - label: "Every changed pin requires reviewer approval through the protected `platform-adoption` environment."
           required: true
-        - label: "If `upgradesFrom` omits the current version, the PR has `platform: fresh-install` intent and the environment reviewer must independently confirm the operator's empty-target attestation."
+        - label: "The committed adoption target equals the proposed tag; adoption mode is `upgrade` only for a listed `upgradesFrom` path, or `fresh-install` only after the environment reviewer independently confirms the operator's empty-target attestation."
           required: true

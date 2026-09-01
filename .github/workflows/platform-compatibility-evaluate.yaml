@@ -1,0 +1,338 @@
+name: Trusted Platform Compatibility Evaluation
+
+on:
+  workflow_call:
+    inputs:
+      pull_request_number:
+        required: true
+        type: number
+      status_app_client_id:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: platform-compatibility-${{ inputs.pull_request_number }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Classify trusted platform transition
+    runs-on: ubuntu-latest
+    environment:
+      name: platform-status
+    outputs:
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      merge_sha: ${{ steps.resolve.outputs.merge_sha }}
+      old_tag: ${{ steps.classify.outputs.old_tag }}
+      new_tag: ${{ steps.classify.outputs.new_tag }}
+      adoption_mode: ${{ steps.classify.outputs.adoption_mode }}
+      platform_pin_changed: ${{ steps.classify.outputs.platform_pin_changed }}
+    steps:
+      - name: Resolve current pull request tuple
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+        run: |
+          if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            printf 'Pull-request number is invalid.\n' >&2
+            exit 1
+          fi
+
+          endpoint="repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER"
+          gh api "$endpoint" >/dev/null
+          payload=''
+          tuple_ready=false
+          for _attempt in {1..10}; do
+            payload="$(gh api "$endpoint")"
+            if ! jq -e --arg repository "$GITHUB_REPOSITORY" '
+              .state == "open" and
+              .base.repo.full_name == $repository and
+              .base.ref == "main" and
+              (.mergeable == true) and
+              (.base.sha | type == "string") and
+              (.head.sha | type == "string") and
+              (.merge_commit_sha | type == "string")
+            ' <<<"$payload" >/dev/null; then
+              sleep 3
+              continue
+            fi
+
+            base_sha="$(jq -r '.base.sha' <<<"$payload")"
+            head_sha="$(jq -r '.head.sha' <<<"$payload")"
+            merge_sha="$(jq -r '.merge_commit_sha' <<<"$payload")"
+            for sha in "$base_sha" "$head_sha" "$merge_sha"; do
+              if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+                printf 'GitHub returned an invalid pull-request commit SHA.\n' >&2
+                exit 1
+              fi
+            done
+
+            commit_payload=''
+            if commit_payload="$(
+              gh api "repos/$GITHUB_REPOSITORY/git/commits/$merge_sha" 2>/dev/null
+            )" && jq -e \
+              --arg merge "$merge_sha" \
+              --arg base "$base_sha" \
+              --arg head "$head_sha" \
+              '.sha == $merge and [.parents[].sha] == [$base, $head]' \
+              <<<"$commit_payload" >/dev/null; then
+              tuple_ready=true
+              break
+            fi
+            sleep 3
+          done
+          if [[ "$tuple_ready" != "true" ]]; then
+            printf 'GitHub did not produce the exact current test-merge tuple.\n' >&2
+            exit 1
+          fi
+
+          {
+            printf 'base_sha=%s\n' "$base_sha"
+            printf 'head_sha=%s\n' "$head_sha"
+            printf 'merge_sha=%s\n' "$merge_sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted base revision
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          ref: ${{ steps.resolve.outputs.base_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Create status-only GitHub App token
+        id: status_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.status_app_client_id }}
+          private-key: ${{ secrets.PLATFORM_STATUS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-statuses: write
+
+      - name: Mark exact merge tuple pending
+        env:
+          PLATFORM_STATUS_TOKEN: ${{ steps.status_token.outputs.token }}
+          MERGE_SHA: ${{ steps.resolve.outputs.merge_sha }}
+        run: >-
+          python3 scripts/publish_platform_status.py
+          --sha "$MERGE_SHA"
+          --state pending
+          --run-id "$GITHUB_RUN_ID"
+          --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Set up uv without a privileged cache
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Classify platform pin
+        id: classify
+        env:
+          BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+          MERGE_SHA: ${{ steps.resolve.outputs.merge_sha }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+          PLATFORM_RELEASE_SIGNER_FINGERPRINT: ${{ vars.PLATFORM_RELEASE_SIGNER_FINGERPRINT }}
+        run: >-
+          uv run --frozen python scripts/check_platform_compatibility.py
+          --base-sha "$BASE_SHA"
+          --head-sha "$HEAD_SHA"
+          --merge-sha "$MERGE_SHA"
+          --pull-request-number "$PR_NUMBER"
+          --classify-only
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Record approval tuple
+        env:
+          BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+          MERGE_SHA: ${{ steps.resolve.outputs.merge_sha }}
+          OLD_TAG: ${{ steps.classify.outputs.old_tag }}
+          NEW_TAG: ${{ steps.classify.outputs.new_tag }}
+          ADOPTION_MODE: ${{ steps.classify.outputs.adoption_mode }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+        run: |
+          {
+            printf '### Platform compatibility approval tuple\n\n'
+            printf -- '- Pull request: %s\n' "$PR_NUMBER"
+            printf -- '- Transition: %s to %s\n' "$OLD_TAG" "$NEW_TAG"
+            printf -- '- Base SHA: %s\n' "$BASE_SHA"
+            printf -- '- Head SHA: %s\n' "$HEAD_SHA"
+            printf -- '- Test-merge SHA: %s\n' "$MERGE_SHA"
+            printf -- '- Adoption mode: %s\n' "$ADOPTION_MODE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  platform_adoption:
+    name: Authorize exact platform adoption
+    needs: classify
+    if: needs.classify.outputs.platform_pin_changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: platform-adoption
+      url: https://github.com/${{ github.repository }}/pull/${{ inputs.pull_request_number }}
+    steps:
+      - name: Revalidate current approval tuple
+        env:
+          EXPECTED_BASE_SHA: ${{ needs.classify.outputs.base_sha }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+          EXPECTED_MERGE_SHA: ${{ needs.classify.outputs.merge_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+        run: |
+          payload="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          commit_payload="$(
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$EXPECTED_MERGE_SHA"
+          )"
+          if ! jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg base "$EXPECTED_BASE_SHA" \
+            --arg head "$EXPECTED_HEAD_SHA" \
+            --arg merge "$EXPECTED_MERGE_SHA" '
+              .state == "open" and
+              .base.repo.full_name == $repository and
+              .base.ref == "main" and
+              (.mergeable == true) and
+              .base.sha == $base and
+              .head.sha == $head and
+              .merge_commit_sha == $merge
+            ' <<<"$payload" >/dev/null ||
+            ! jq -e \
+              --arg merge "$EXPECTED_MERGE_SHA" \
+              --arg base "$EXPECTED_BASE_SHA" \
+              --arg head "$EXPECTED_HEAD_SHA" \
+              '.sha == $merge and [.parents[].sha] == [$base, $head]' \
+              <<<"$commit_payload" >/dev/null; then
+            printf 'The approved pull-request tuple changed; fresh authorization is required.\n' >&2
+            exit 1
+          fi
+
+      - name: Checkout exact trusted base revision
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          ref: ${{ needs.classify.outputs.base_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up uv without a privileged cache
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Verify authorized platform adoption
+        env:
+          BASE_SHA: ${{ needs.classify.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+          MERGE_SHA: ${{ needs.classify.outputs.merge_sha }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+          PLATFORM_RELEASE_SIGNER_FINGERPRINT: ${{ vars.PLATFORM_RELEASE_SIGNER_FINGERPRINT }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          uv run --frozen python scripts/check_platform_compatibility.py
+          --base-sha "$BASE_SHA"
+          --head-sha "$HEAD_SHA"
+          --merge-sha "$MERGE_SHA"
+          --pull-request-number "$PR_NUMBER"
+
+  finalize:
+    name: Publish trusted compatibility result
+    needs: [classify, platform_adoption]
+    if: ${{ always() && needs.classify.outputs.merge_sha != '' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: platform-status
+    steps:
+      - name: Checkout exact trusted base revision
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          ref: ${{ needs.classify.outputs.base_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check tuple freshness and job results
+        id: result
+        env:
+          ADOPTION_RESULT: ${{ needs.platform_adoption.result }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          EXPECTED_BASE_SHA: ${{ needs.classify.outputs.base_sha }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
+          EXPECTED_MERGE_SHA: ${{ needs.classify.outputs.merge_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM_PIN_CHANGED: ${{ needs.classify.outputs.platform_pin_changed }}
+          PR_NUMBER: ${{ inputs.pull_request_number }}
+        run: |
+          payload="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          commit_payload=''
+          tuple_is_current=false
+          if commit_payload="$(
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$EXPECTED_MERGE_SHA" \
+              2>/dev/null
+          )" && jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg base "$EXPECTED_BASE_SHA" \
+            --arg head "$EXPECTED_HEAD_SHA" \
+            --arg merge "$EXPECTED_MERGE_SHA" '
+              .state == "open" and
+              .base.repo.full_name == $repository and
+              .base.ref == "main" and
+              (.mergeable == true) and
+              .base.sha == $base and
+              .head.sha == $head and
+              .merge_commit_sha == $merge
+            ' <<<"$payload" >/dev/null && jq -e \
+            --arg merge "$EXPECTED_MERGE_SHA" \
+            --arg base "$EXPECTED_BASE_SHA" \
+            --arg head "$EXPECTED_HEAD_SHA" \
+            '.sha == $merge and [.parents[].sha] == [$base, $head]' \
+            <<<"$commit_payload" >/dev/null; then
+            tuple_is_current=true
+          fi
+
+          state=failure
+          if [[ "$tuple_is_current" == "true" && "$CLASSIFY_RESULT" == "success" ]]; then
+            case "$PLATFORM_PIN_CHANGED:$ADOPTION_RESULT" in
+              true:success|false:skipped)
+                state=success
+                ;;
+            esac
+          fi
+          printf 'state=%s\n' "$state" >> "$GITHUB_OUTPUT"
+
+      - name: Create status-only GitHub App token
+        id: status_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.status_app_client_id }}
+          private-key: ${{ secrets.PLATFORM_STATUS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-statuses: write
+
+      - name: Publish exact merge status
+        env:
+          MERGE_SHA: ${{ needs.classify.outputs.merge_sha }}
+          PLATFORM_STATUS_TOKEN: ${{ steps.status_token.outputs.token }}
+          STATUS_STATE: ${{ steps.result.outputs.state }}
+        run: >-
+          python3 scripts/publish_platform_status.py
+          --sha "$MERGE_SHA"
+          --state "$STATUS_STATE"
+          --run-id "$GITHUB_RUN_ID"
+          --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Fail unsuccessful evaluation
+        if: steps.result.outputs.state != 'success'
+        run: |
+          printf 'Platform compatibility failed or the approved tuple became stale.\n' >&2
+          exit 1
