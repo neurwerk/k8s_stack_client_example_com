@@ -20,6 +20,8 @@ from scripts.check_platform_compatibility import (
     FLUX_SYNC_PATH,
     PLATFORM_SOURCE_PATH,
     CompatibilityError,
+    PlatformSource,
+    VerifiedTag,
     fetch_pull_request_refs,
     parse_platform_source,
     parse_recovery_contract,
@@ -41,16 +43,20 @@ def source(
     trust_secret: str = "k8s-stack-release-trust",
     adoption_mode: str = "upgrade",
     adoption_target: str | None = None,
+    promoted_from_alpha: str | None = None,
 ) -> str:
+    annotations = {
+        "platform.neurwerk.com/adoption-mode": adoption_mode,
+        "platform.neurwerk.com/adoption-target": adoption_target or tag,
+    }
+    if promoted_from_alpha is not None:
+        annotations["platform.neurwerk.com/promoted-from-alpha"] = promoted_from_alpha
     return yaml.safe_dump(
         {
             "apiVersion": "source.toolkit.fluxcd.io/v1",
             "kind": "GitRepository",
             "metadata": {
-                "annotations": {
-                    "platform.neurwerk.com/adoption-mode": adoption_mode,
-                    "platform.neurwerk.com/adoption-target": adoption_target or tag,
-                },
+                "annotations": annotations,
                 "name": "k8s-stack",
                 "namespace": "flux-system",
             },
@@ -63,6 +69,31 @@ def source(
                     "secretRef": {"name": trust_secret},
                 },
             },
+        }
+    )
+
+
+def alpha_source(commit: str | None = None, **spec_overrides: Any) -> str:
+    spec: dict[str, Any] = {
+        "interval": "30s",
+        "url": "https://github.com/neurwerk/k8s_stack_base.git",
+        "ref": {"commit": commit} if commit is not None else {"branch": "main"},
+        "verify": {
+            "mode": "HEAD",
+            "secretRef": {"name": "k8s-stack-alpha-trust"},
+        },
+    }
+    spec.update(spec_overrides)
+    return yaml.safe_dump(
+        {
+            "apiVersion": "source.toolkit.fluxcd.io/v1",
+            "kind": "GitRepository",
+            "metadata": {
+                "annotations": {"platform.neurwerk.com/channel": "alpha"},
+                "name": "k8s-stack",
+                "namespace": "flux-system",
+            },
+            "spec": spec,
         }
     )
 
@@ -134,7 +165,16 @@ def manifest(
     fresh_install: str = "supported",
     downgrade: str = "unsupported",
     recovery: str = "replacement-restore",
+    alpha_revisions: list[str] | None = None,
 ) -> str:
+    compatibility: dict[str, Any] = {
+        "freshInstall": fresh_install,
+        "upgradesFrom": upgrades_from,
+        "downgrade": downgrade,
+        "recovery": recovery,
+    }
+    if alpha_revisions is not None:
+        compatibility["upgradesFromAlphaRevisions"] = alpha_revisions
     return yaml.safe_dump(
         {
             "apiVersion": "platform.neurwerk.com/v1alpha1",
@@ -146,12 +186,7 @@ def manifest(
                     "algorithm": "ssh-ed25519",
                     "fingerprint": FINGERPRINT,
                 },
-                "compatibility": {
-                    "freshInstall": fresh_install,
-                    "upgradesFrom": upgrades_from,
-                    "downgrade": downgrade,
-                    "recovery": recovery,
-                },
+                "compatibility": compatibility,
             },
         }
     )
@@ -163,6 +198,8 @@ def migration(
     old_tags: list[str] | None = None,
     downgrade: str = "Unsupported",
     recovery: str = "Replacement restore",
+    alpha_revisions: list[str] | None = None,
+    fresh_install: str = "Supported",
 ) -> str:
     old_tags = old_tags or []
     supported = (
@@ -170,9 +207,20 @@ def migration(
     )
     sections = {
         "Support": (
-            "- Fresh installation: Supported.\n"
+            f"- Fresh installation: {fresh_install}.\n"
             f"- Supported source versions: {supported}.\n"
-            f"- Downgrade: {downgrade}."
+            + (
+                "- Supported alpha source revisions: "
+                + (
+                    ", ".join(f"`{revision}`" for revision in alpha_revisions)
+                    if alpha_revisions
+                    else "None"
+                )
+                + ".\n"
+                if alpha_revisions is not None
+                else ""
+            )
+            + f"- Downgrade: {downgrade}."
         ),
         "Prerequisites": "None.",
         "Client Actions": "None.",
@@ -207,7 +255,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
     def test_platform_source_requires_the_exact_trust_secret(self) -> None:
         self.assertEqual(
             parse_platform_source(source("v1.2.3"), origin="test"),
-            ("v1.2.3", "upgrade"),
+            PlatformSource("stable", "tag", "v1.2.3", "upgrade"),
         )
         with self.assertRaisesRegex(CompatibilityError, "k8s-stack-release-trust"):
             parse_platform_source(
@@ -231,6 +279,40 @@ class PlatformCompatibilityTests(unittest.TestCase):
         document["spec"]["include"] = [{"repository": {"name": "flux-system"}}]
         with self.assertRaisesRegex(CompatibilityError, "canonical source spec"):
             parse_platform_source(yaml.safe_dump(document), origin="test")
+
+    def test_alpha_source_has_one_closed_canonical_shape(self) -> None:
+        self.assertEqual(
+            parse_platform_source(alpha_source(), origin="test"),
+            PlatformSource("alpha", "branch", "main"),
+        )
+        commit = "a" * 40
+        self.assertEqual(
+            parse_platform_source(alpha_source(commit), origin="test"),
+            PlatformSource("alpha", "commit", commit),
+        )
+        invalid_specs = (
+            {"ref": {"branch": "develop"}},
+            {"ref": {"commit": "abc123"}},
+            {"verify": {"mode": "Tag", "secretRef": {"name": "k8s-stack-alpha-trust"}}},
+            {"verify": {"mode": "HEAD", "secretRef": {"name": "other-trust"}}},
+            {"include": []},
+        )
+        for override in invalid_specs:
+            with self.subTest(override=override), self.assertRaises(CompatibilityError):
+                parse_platform_source(alpha_source(**override), origin="test")
+
+    def test_stable_promotion_annotation_requires_a_full_commit_sha(self) -> None:
+        revision = "a" * 40
+        self.assertEqual(
+            parse_platform_source(
+                source("v1.2.3", promoted_from_alpha=revision), origin="test"
+            ).promoted_from_alpha,
+            revision,
+        )
+        with self.assertRaisesRegex(CompatibilityError, "full 40-hex"):
+            parse_platform_source(
+                source("v1.2.3", promoted_from_alpha="abc123"), origin="test"
+            )
 
     def test_explicit_upgrade_path_is_accepted(self) -> None:
         validate_release_contract(
@@ -639,6 +721,429 @@ class PlatformCompatibilityTests(unittest.TestCase):
         self.assertTrue(result.changed)
         self.assertFalse(result.verified)
 
+    def test_stable_to_alpha_requires_main_at_or_ahead_of_stable(self) -> None:
+        base_sha = "a" * 40
+        proposed_sha = "b" * 40
+
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                return source("v0.2.6") if revision == base_sha else alpha_source()
+            return control_plane_file(path)
+
+        resolved = {("tag", "v0.2.6"): "1" * 40, ("branch", "main"): "2" * 40}
+        authenticated_tags: list[str] = []
+
+        def authenticate_baseline(tag: str, _fingerprint: str) -> VerifiedTag:
+            authenticated_tags.append(tag)
+            return VerifiedTag("", "", resolved[("tag", tag)])
+
+        result = run_check(
+            ROOT,
+            base_sha,
+            proposed_sha,
+            FINGERPRINT,
+            None,
+            revision_reader=revision_reader,
+            source_ignore_finder=no_source_ignores,
+            base_revision_fetcher=lambda selector, revision: resolved[(selector, revision)],
+            ancestor_checker=lambda ancestor, descendant: (ancestor, descendant)
+            == ("1" * 40, "2" * 40),
+            tag_fetcher=authenticate_baseline,
+        )
+        self.assertEqual(result.new_source, PlatformSource("alpha", "branch", "main"))
+        self.assertTrue(result.verified)
+        self.assertEqual(authenticated_tags, ["v0.2.6"])
+
+        with self.assertRaisesRegex(CompatibilityError, "behind or divergent"):
+            run_check(
+                ROOT,
+                base_sha,
+                proposed_sha,
+                FINGERPRINT,
+                None,
+                revision_reader=revision_reader,
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: resolved[(selector, revision)],
+                ancestor_checker=lambda _ancestor, _descendant: False,
+                tag_fetcher=authenticate_baseline,
+            )
+
+    def test_alpha_branch_resolves_even_when_source_is_unchanged(self) -> None:
+        resolved = "1" * 40
+
+        def revision_reader(_root: Path, _revision: str, path: Path) -> str:
+            return alpha_source() if path == PLATFORM_SOURCE_PATH else control_plane_file(path)
+
+        result = run_check(
+            ROOT,
+            "a" * 40,
+            "b" * 40,
+            "",
+            None,
+            revision_reader=revision_reader,
+            source_ignore_finder=no_source_ignores,
+            base_revision_fetcher=lambda selector, revision: resolved,
+            ancestor_checker=lambda *_arguments: self.fail("alpha ancestry was checked"),
+        )
+        self.assertFalse(result.changed)
+        self.assertFalse(result.verified)
+        self.assertEqual(result.old_alpha_commit, resolved)
+        self.assertEqual(result.new_alpha_commit, resolved)
+
+    def test_alpha_resolution_must_match_classification_expectations(self) -> None:
+        classified = "1" * 40
+        moved = "2" * 40
+
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                return alpha_source() if revision == "a" * 40 else alpha_source(classified)
+            return control_plane_file(path)
+
+        with self.assertRaisesRegex(CompatibilityError, "resolved old alpha commit changed"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                "",
+                None,
+                expected_old_alpha_commit=classified,
+                expected_new_alpha_commit=classified,
+                revision_reader=revision_reader,
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: (
+                    moved if selector == "branch" else revision
+                ),
+                ancestor_checker=lambda ancestor, descendant: ancestor == classified
+                and descendant == moved,
+            )
+
+        def unfreeze_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                return alpha_source(classified) if revision == "a" * 40 else alpha_source()
+            return control_plane_file(path)
+
+        with self.assertRaisesRegex(CompatibilityError, "resolved new alpha commit changed"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                "",
+                None,
+                expected_old_alpha_commit=classified,
+                expected_new_alpha_commit=classified,
+                revision_reader=unfreeze_reader,
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: (
+                    moved if selector == "branch" else revision
+                ),
+                ancestor_checker=lambda ancestor, descendant: (ancestor, descendant)
+                == (classified, moved),
+            )
+
+    def test_alpha_freeze_and_unfreeze_require_protected_main_ancestry(self) -> None:
+        pinned = "1" * 40
+        main = "2" * 40
+
+        def transition_reader(old: str, new: str):
+            def revision_reader(_root: Path, revision: str, path: Path) -> str:
+                if path == PLATFORM_SOURCE_PATH:
+                    return old if revision == "a" * 40 else new
+                return control_plane_file(path)
+
+            return revision_reader
+
+        for old, new in (
+            (alpha_source(), alpha_source(main)),
+            (alpha_source(pinned), alpha_source()),
+        ):
+            with self.subTest(old=old, new=new):
+                result = run_check(
+                    ROOT,
+                    "a" * 40,
+                    "b" * 40,
+                    "",
+                    None,
+                    revision_reader=transition_reader(old, new),
+                    source_ignore_finder=no_source_ignores,
+                    base_revision_fetcher=lambda selector, revision: (
+                        main if selector == "branch" else revision
+                    ),
+                    ancestor_checker=lambda ancestor, descendant: (ancestor, descendant)
+                    == (pinned, main),
+                )
+                self.assertTrue(result.changed)
+                self.assertTrue(result.verified)
+
+        with self.assertRaisesRegex(CompatibilityError, "must exactly equal"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                "",
+                None,
+                revision_reader=transition_reader(alpha_source(), alpha_source(pinned)),
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: (
+                    main if selector == "branch" else revision
+                ),
+                ancestor_checker=lambda ancestor, descendant: (ancestor, descendant)
+                == (pinned, main),
+            )
+
+    def test_moving_alpha_branch_cannot_transition_directly_to_stable(self) -> None:
+        observed = "1" * 40
+
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                return (
+                    alpha_source()
+                    if revision == "a" * 40
+                    else source("v0.3.0", promoted_from_alpha=observed)
+                )
+            return control_plane_file(path)
+
+        with self.assertRaisesRegex(CompatibilityError, "freeze the source"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                classify_only=True,
+                revision_reader=revision_reader,
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: observed,
+            )
+
+    def test_alpha_to_stable_exact_commit_is_a_zero_change_promotion(self) -> None:
+        observed = "1" * 40
+        target = "v0.3.0"
+
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                if revision == "a" * 40:
+                    return alpha_source(observed)
+                return source(target, promoted_from_alpha=observed)
+            return control_plane_file(path)
+
+        result = run_check(
+            ROOT,
+            "a" * 40,
+            "b" * 40,
+            FINGERPRINT,
+            None,
+            revision_reader=revision_reader,
+            source_ignore_finder=no_source_ignores,
+            base_revision_fetcher=lambda selector, revision: observed,
+            ancestor_checker=lambda *_arguments: self.fail("exact commits need no ancestry"),
+            tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
+                manifest(target, upgrades_from=[]), migration(target), observed
+            ),
+            release_fetcher=lambda _tag, _token: release(target),
+        )
+        self.assertTrue(result.changed)
+        self.assertTrue(result.verified)
+
+    def test_exact_alpha_promotion_validates_complete_release_contract(self) -> None:
+        observed = "1" * 40
+        target = "v0.3.0"
+
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                return (
+                    alpha_source(observed)
+                    if revision == "a" * 40
+                    else source(target, promoted_from_alpha=observed)
+                )
+            return control_plane_file(path)
+
+        with self.assertRaisesRegex(CompatibilityError, "downgrade support disagrees"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                revision_reader=revision_reader,
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: observed,
+                tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
+                    manifest(target, upgrades_from=[]),
+                    migration(target, downgrade="Supported"),
+                    observed,
+                ),
+                release_fetcher=lambda _tag, _token: release(target),
+            )
+
+    def test_fresh_alpha_promotion_requires_fresh_install_support(self) -> None:
+        observed = "1" * 40
+        target = "v0.3.0"
+
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                return (
+                    alpha_source(observed)
+                    if revision == "a" * 40
+                    else source(
+                        target,
+                        adoption_mode="fresh-install",
+                        promoted_from_alpha=observed,
+                    )
+                )
+            return control_plane_file(path)
+
+        with self.assertRaisesRegex(CompatibilityError, "does not support fresh"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                revision_reader=revision_reader,
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: observed,
+                tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
+                    manifest(
+                        target,
+                        upgrades_from=[],
+                        fresh_install="unsupported",
+                    ),
+                    migration(target, fresh_install="Unsupported"),
+                    observed,
+                ),
+                release_fetcher=lambda _tag, _token: release(target),
+            )
+
+        result = run_check(
+            ROOT,
+            "a" * 40,
+            "b" * 40,
+            FINGERPRINT,
+            None,
+            revision_reader=revision_reader,
+            source_ignore_finder=no_source_ignores,
+            base_revision_fetcher=lambda selector, revision: observed,
+            tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
+                manifest(target, upgrades_from=[]), migration(target), observed
+            ),
+            release_fetcher=lambda _tag, _token: release(target),
+        )
+        self.assertTrue(result.verified)
+
+    def test_forward_alpha_promotion_requires_revision_in_both_contracts(self) -> None:
+        observed = "1" * 40
+        target_commit = "2" * 40
+        target = "v0.3.0"
+
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                if revision == "a" * 40:
+                    return alpha_source(observed)
+                return source(target, promoted_from_alpha=observed)
+            return control_plane_file(path)
+
+        common: dict[str, Any] = {
+            "revision_reader": revision_reader,
+            "source_ignore_finder": no_source_ignores,
+            "base_revision_fetcher": lambda selector, revision: observed,
+            "ancestor_checker": lambda ancestor, descendant: (ancestor, descendant)
+            == (observed, target_commit),
+            "release_fetcher": lambda _tag, _token: release(target),
+        }
+        with self.assertRaisesRegex(CompatibilityError, "does not list"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
+                    manifest(target, upgrades_from=[], alpha_revisions=[]),
+                    migration(target, alpha_revisions=[]),
+                    target_commit,
+                ),
+                **common,
+            )
+
+        extra_revision = "3" * 40
+        with self.assertRaisesRegex(CompatibilityError, "must exactly equal"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
+                    manifest(
+                        target,
+                        upgrades_from=[],
+                        alpha_revisions=[observed, extra_revision],
+                    ),
+                    migration(target, alpha_revisions=[observed]),
+                    target_commit,
+                ),
+                **common,
+            )
+
+        result = run_check(
+            ROOT,
+            "a" * 40,
+            "b" * 40,
+            FINGERPRINT,
+            None,
+            tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
+                manifest(target, upgrades_from=[], alpha_revisions=[observed]),
+                migration(target, alpha_revisions=[observed]),
+                target_commit,
+            ),
+            **common,
+        )
+        self.assertTrue(result.verified)
+
+    def test_alpha_promotion_rejects_stale_observation_and_non_descendant(self) -> None:
+        observed = "1" * 40
+        target_commit = "2" * 40
+
+        def reader_with_promotion(promoted: str):
+            def revision_reader(_root: Path, revision: str, path: Path) -> str:
+                if path == PLATFORM_SOURCE_PATH:
+                    return (
+                        alpha_source(observed)
+                        if revision == "a" * 40
+                        else source("v0.3.0", promoted_from_alpha=promoted)
+                    )
+                return control_plane_file(path)
+
+            return revision_reader
+
+        with self.assertRaisesRegex(CompatibilityError, "must equal the exact observed"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                classify_only=True,
+                revision_reader=reader_with_promotion("3" * 40),
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: observed,
+            )
+        with self.assertRaisesRegex(CompatibilityError, "behind or divergent"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                classify_only=True,
+                revision_reader=reader_with_promotion(observed),
+                source_ignore_finder=no_source_ignores,
+                base_revision_fetcher=lambda selector, revision: (
+                    target_commit if selector == "tag" else observed
+                ),
+                ancestor_checker=lambda _ancestor, _descendant: False,
+            )
+
     def test_adoption_mode_cannot_change_without_a_new_tag(self) -> None:
         def revision_reader(_root: Path, revision: str, path: Path) -> str:
             if path == PLATFORM_SOURCE_PATH:
@@ -647,7 +1152,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             return control_plane_file(path)
 
         with self.assertRaisesRegex(
-            CompatibilityError, "only with the exact platform tag"
+            CompatibilityError, "annotations may change only"
         ):
             run_check(
                 ROOT,
@@ -934,7 +1439,12 @@ class PlatformCompatibilityTests(unittest.TestCase):
         self.assertEqual(jobs["classify"]["environment"]["name"], "platform-status")
         self.assertEqual(jobs["finalize"]["environment"]["name"], "platform-status")
         self.assertIn("always()", jobs["finalize"]["if"])
-        self.assertIn("platform_pin_changed", jobs["classify"]["outputs"])
+        self.assertIn("platform_source_changed", jobs["classify"]["outputs"])
+        self.assertIn("new_source_channel", jobs["classify"]["outputs"])
+        self.assertIn("new_source_selector", jobs["classify"]["outputs"])
+        self.assertIn("new_source_revision", jobs["classify"]["outputs"])
+        self.assertIn("old_alpha_commit", jobs["classify"]["outputs"])
+        self.assertIn("new_alpha_commit", jobs["classify"]["outputs"])
         self.assertTrue(
             all(job.get("name") != "Platform Compatibility" for job in jobs.values())
         )
@@ -949,6 +1459,10 @@ class PlatformCompatibilityTests(unittest.TestCase):
         self.assertIn("actions/create-github-app-token@", text)
         self.assertIn("permission-statuses: write", text)
         self.assertIn("--merge-sha", text)
+        self.assertIn("--expected-old-alpha-commit", text)
+        self.assertIn("--expected-new-alpha-commit", text)
+        self.assertIn("Resolved old alpha commit", text)
+        self.assertIn("Resolved new alpha commit", text)
         self.assertIn("secrets.PLATFORM_STATUS_APP_PRIVATE_KEY", text)
         self.assertNotIn("--labels-json", text)
         self.assertNotIn("ref: ${{ github.event.pull_request.head.sha }}", text)

@@ -40,7 +40,7 @@ body:
   - type: input
     id: platform-pin
     attributes:
-      label: Exact platform pin
+      label: Platform channel and selector
       placeholder: vX.Y.Z
   - type: checkboxes
     id: safety

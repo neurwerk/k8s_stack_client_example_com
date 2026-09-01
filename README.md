@@ -5,6 +5,20 @@ The client repository supplies non-secret values and cluster composition; the
 [`k8s_stack_base`](https://github.com/neurwerk/k8s_stack_base) repository
 supplies signed platform releases and charts.
 
+## Platform Channels
+
+The committed example selects the stable channel with one exact signed release
+tag. A reviewed source change may instead opt into the alpha channel using Base
+`main` or one full commit SHA. Both alpha selectors use Flux `HEAD` verification
+with the separate alpha trust root. Channel selection is independent of the
+cluster environment.
+
+Returning from alpha to stable requires first freezing a moving `main` source to
+the exact observed commit and reconciling that commit source. Promotion binds to
+the frozen SHA. A forward upgrade is accepted only when its release manifest
+and migration document declare the same alpha revision set and include that
+SHA. Fresh installation instead requires explicit fresh-install support.
+
 ## Validate The Repository
 
 From this repository:
