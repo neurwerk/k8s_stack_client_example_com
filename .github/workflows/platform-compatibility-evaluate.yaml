@@ -28,10 +28,16 @@ jobs:
       base_sha: ${{ steps.resolve.outputs.base_sha }}
       head_sha: ${{ steps.resolve.outputs.head_sha }}
       merge_sha: ${{ steps.resolve.outputs.merge_sha }}
-      old_tag: ${{ steps.classify.outputs.old_tag }}
-      new_tag: ${{ steps.classify.outputs.new_tag }}
+      old_source_channel: ${{ steps.classify.outputs.old_source_channel }}
+      old_source_selector: ${{ steps.classify.outputs.old_source_selector }}
+      old_source_revision: ${{ steps.classify.outputs.old_source_revision }}
+      new_source_channel: ${{ steps.classify.outputs.new_source_channel }}
+      new_source_selector: ${{ steps.classify.outputs.new_source_selector }}
+      new_source_revision: ${{ steps.classify.outputs.new_source_revision }}
+      old_alpha_commit: ${{ steps.classify.outputs.old_alpha_commit }}
+      new_alpha_commit: ${{ steps.classify.outputs.new_alpha_commit }}
       adoption_mode: ${{ steps.classify.outputs.adoption_mode }}
-      platform_pin_changed: ${{ steps.classify.outputs.platform_pin_changed }}
+      platform_source_changed: ${{ steps.classify.outputs.platform_source_changed }}
     steps:
       - name: Resolve current pull request tuple
         id: resolve
@@ -134,7 +140,7 @@ jobs:
       - name: Install Python
         run: uv python install 3.12
 
-      - name: Classify platform pin
+      - name: Classify platform source
         id: classify
         env:
           BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
@@ -156,15 +162,25 @@ jobs:
           BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
           HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
           MERGE_SHA: ${{ steps.resolve.outputs.merge_sha }}
-          OLD_TAG: ${{ steps.classify.outputs.old_tag }}
-          NEW_TAG: ${{ steps.classify.outputs.new_tag }}
+          OLD_CHANNEL: ${{ steps.classify.outputs.old_source_channel }}
+          OLD_SELECTOR: ${{ steps.classify.outputs.old_source_selector }}
+          OLD_REVISION: ${{ steps.classify.outputs.old_source_revision }}
+          NEW_CHANNEL: ${{ steps.classify.outputs.new_source_channel }}
+          NEW_SELECTOR: ${{ steps.classify.outputs.new_source_selector }}
+          NEW_REVISION: ${{ steps.classify.outputs.new_source_revision }}
+          OLD_ALPHA_COMMIT: ${{ steps.classify.outputs.old_alpha_commit }}
+          NEW_ALPHA_COMMIT: ${{ steps.classify.outputs.new_alpha_commit }}
           ADOPTION_MODE: ${{ steps.classify.outputs.adoption_mode }}
           PR_NUMBER: ${{ inputs.pull_request_number }}
         run: |
           {
             printf '### Platform compatibility approval tuple\n\n'
             printf -- '- Pull request: %s\n' "$PR_NUMBER"
-            printf -- '- Transition: %s to %s\n' "$OLD_TAG" "$NEW_TAG"
+            printf -- '- Source transition: %s %s:%s to %s %s:%s\n' \
+              "$OLD_CHANNEL" "$OLD_SELECTOR" "$OLD_REVISION" \
+              "$NEW_CHANNEL" "$NEW_SELECTOR" "$NEW_REVISION"
+            printf -- '- Resolved old alpha commit: %s\n' "${OLD_ALPHA_COMMIT:-not-applicable}"
+            printf -- '- Resolved new alpha commit: %s\n' "${NEW_ALPHA_COMMIT:-not-applicable}"
             printf -- '- Base SHA: %s\n' "$BASE_SHA"
             printf -- '- Head SHA: %s\n' "$HEAD_SHA"
             printf -- '- Test-merge SHA: %s\n' "$MERGE_SHA"
@@ -174,7 +190,7 @@ jobs:
   platform_adoption:
     name: Authorize exact platform adoption
     needs: classify
-    if: needs.classify.outputs.platform_pin_changed == 'true'
+    if: needs.classify.outputs.platform_source_changed == 'true'
     runs-on: ubuntu-latest
     environment:
       name: platform-adoption
@@ -235,6 +251,8 @@ jobs:
           BASE_SHA: ${{ needs.classify.outputs.base_sha }}
           HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
           MERGE_SHA: ${{ needs.classify.outputs.merge_sha }}
+          EXPECTED_OLD_ALPHA_COMMIT: ${{ needs.classify.outputs.old_alpha_commit }}
+          EXPECTED_NEW_ALPHA_COMMIT: ${{ needs.classify.outputs.new_alpha_commit }}
           PR_NUMBER: ${{ inputs.pull_request_number }}
           PLATFORM_RELEASE_SIGNER_FINGERPRINT: ${{ vars.PLATFORM_RELEASE_SIGNER_FINGERPRINT }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -244,6 +262,8 @@ jobs:
           --head-sha "$HEAD_SHA"
           --merge-sha "$MERGE_SHA"
           --pull-request-number "$PR_NUMBER"
+          --expected-old-alpha-commit "$EXPECTED_OLD_ALPHA_COMMIT"
+          --expected-new-alpha-commit "$EXPECTED_NEW_ALPHA_COMMIT"
 
   finalize:
     name: Publish trusted compatibility result
@@ -269,7 +289,7 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.head_sha }}
           EXPECTED_MERGE_SHA: ${{ needs.classify.outputs.merge_sha }}
           GH_TOKEN: ${{ github.token }}
-          PLATFORM_PIN_CHANGED: ${{ needs.classify.outputs.platform_pin_changed }}
+          PLATFORM_SOURCE_CHANGED: ${{ needs.classify.outputs.platform_source_changed }}
           PR_NUMBER: ${{ inputs.pull_request_number }}
         run: |
           payload="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
@@ -301,7 +321,7 @@ jobs:
 
           state=failure
           if [[ "$tuple_is_current" == "true" && "$CLASSIFY_RESULT" == "success" ]]; then
-            case "$PLATFORM_PIN_CHANGED:$ADOPTION_RESULT" in
+            case "$PLATFORM_SOURCE_CHANGED:$ADOPTION_RESULT" in
               true:success|false:skipped)
                 state=success
                 ;;

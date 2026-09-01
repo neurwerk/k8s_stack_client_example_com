@@ -89,7 +89,7 @@ contract-check: ## Verify client values and Flux composition contracts
 	@if [ -z "$(UV)" ]; then printf "$(RED)uv is required$(RESET)\n"; exit 1; fi
 	@$(UV) run --frozen python -m unittest discover -s tests/validation -p 'test_*.py'
 
-platform-compatibility: ## Verify a changed platform pin against its public release
+platform-compatibility: ## Verify a changed platform source against Base
 	@if [ -z "$(UV)" ]; then printf "$(RED)uv is required$(RESET)\n"; exit 1; fi
 	@if [ -z "$(BASE_SHA)" ]; then printf "$(RED)BASE_SHA is required$(RESET)\n"; exit 1; fi
 	@if [ -z "$(HEAD_SHA)" ]; then printf "$(RED)HEAD_SHA is required$(RESET)\n"; exit 1; fi

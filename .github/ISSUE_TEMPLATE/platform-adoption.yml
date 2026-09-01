@@ -1,22 +1,22 @@
-name: Platform adoption
-description: Propose adopting an exact signed platform release for the Example client.
-title: "[Platform adoption]: "
+name: Platform source adoption
+description: Propose a reviewed stable or alpha platform source transition.
+title: "[Platform source]: "
 body:
   - type: markdown
     attributes:
-      value: Adoption requires an immutable signed tag, a published full GitHub Release, explicit compatibility, and reviewed migration evidence. Opening this issue does not authorize deployment.
+      value: Stable adoption requires signed release evidence. Alpha adoption requires reviewed Base main ancestry and separate HEAD trust. Channel selection is independent of environment. Opening this issue does not authorize deployment.
   - type: input
     id: current-version
     attributes:
-      label: Current exact pin
-      placeholder: vX.Y.Z
+      label: Current channel and selector
+      placeholder: stable tag:vX.Y.Z, alpha branch:main, or alpha commit:SHA
     validations:
       required: true
   - type: input
     id: target-version
     attributes:
-      label: Target exact pin
-      placeholder: vX.Y.Z
+      label: Target channel and selector
+      placeholder: stable tag:vX.Y.Z, alpha branch:main, or alpha commit:SHA
     validations:
       required: true
   - type: dropdown
@@ -32,8 +32,8 @@ body:
   - type: textarea
     id: evidence
     attributes:
-      label: Release and compatibility evidence
-      description: Link the published release and summarize manifest `upgradesFrom`, signer verification, migration actions, prerequisites, and recovery classification.
+      label: Source and compatibility evidence
+      description: Summarize signed release checks or Base main ancestry, plus any alpha promotion SHA, migration actions, prerequisites, and recovery classification.
     validations:
       required: true
   - type: textarea
@@ -48,11 +48,11 @@ body:
     attributes:
       label: Adoption gates
       options:
-        - label: The target is newer than the current pin and is an exact strict SemVer tag.
+        - label: The target uses the canonical stable or alpha source shape.
           required: true
         - label: I reviewed stateful, CRD, API, secret-reference, and resource-identity effects.
           required: true
-        - label: "Every changed pin requires reviewer approval through the protected `platform-adoption` environment."
+        - label: "Maintainer review covers the exact source transition; merging that reviewed commit is the adoption authorization."
           required: true
-        - label: "The committed adoption target equals the proposed tag; adoption mode is `upgrade` only for a listed `upgradesFrom` path, or `fresh-install` only after the environment reviewer independently confirms the operator's empty-target attestation."
+        - label: "Stable transitions satisfy release compatibility; alpha transitions satisfy protected Base main ancestry; a moving alpha source is frozen and reconciled before promotion records the exact frozen SHA."
           required: true

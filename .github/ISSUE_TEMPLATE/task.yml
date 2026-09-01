@@ -35,7 +35,7 @@ body:
     id: compatibility
     attributes:
       label: Compatibility and migration impact
-      description: Cover platform pins, state, APIs, resource identities, and staged reconciliation, or state why each is unaffected.
+      description: Cover platform sources, state, APIs, resource identities, and staged reconciliation, or state why each is unaffected.
     validations:
       required: true
   - type: checkboxes

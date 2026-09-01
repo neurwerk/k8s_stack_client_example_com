@@ -15,6 +15,7 @@ from scripts.check_platform_compatibility import (
     FLUX_RESOURCES,
     FLUX_SYNC_PATH,
     PLATFORM_SOURCE_PATH,
+    PlatformSource,
     parse_flux_sync,
     parse_kustomization,
     parse_platform_source,
@@ -33,7 +34,12 @@ class PlatformSourceTest(unittest.TestCase):
 
         self.assertEqual(
             parse_platform_source(content, origin=str(PLATFORM_SOURCE_PATH)),
-            (spec["ref"]["tag"], annotations["platform.neurwerk.com/adoption-mode"]),
+            PlatformSource(
+                "stable",
+                "tag",
+                spec["ref"]["tag"],
+                annotations["platform.neurwerk.com/adoption-mode"],
+            ),
         )
         self.assertEqual(spec["url"], "https://github.com/neurwerk/k8s_stack_base.git")
         self.assertNotIn("secretRef", spec)

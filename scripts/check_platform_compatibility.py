@@ -32,6 +32,8 @@ PLATFORM_RELEASE_API = (
 TRUST_KEY_PATH = "release/trust/platform-release.sshpub"
 ADOPTION_MODE_ANNOTATION = "platform.neurwerk.com/adoption-mode"
 ADOPTION_TARGET_ANNOTATION = "platform.neurwerk.com/adoption-target"
+CHANNEL_ANNOTATION = "platform.neurwerk.com/channel"
+PROMOTED_FROM_ALPHA_ANNOTATION = "platform.neurwerk.com/promoted-from-alpha"
 ADOPTION_MODES = {"fresh-install", "upgrade"}
 CLUSTER_RESOURCES = [
     "cluster-identity.yaml",
@@ -47,6 +49,7 @@ TAG_PATTERN = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 BARE_SEMVER_PATTERN = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 FINGERPRINT_PATTERN = re.compile(r"^SHA256:[A-Za-z0-9+/]{43}$")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40,64}$")
+COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 CLIENT_SOURCE_URL_PATTERN = re.compile(
     r"^ssh://git@github\.com/neurwerk/k8s_stack_client_[a-z0-9_]+\.git$"
 )
@@ -81,13 +84,34 @@ class CompatibilityError(RuntimeError):
 
 @dataclass(frozen=True)
 class CheckResult:
-    """Machine-readable platform-pin classification and verification result."""
+    """Machine-readable platform source classification and verification result."""
 
-    old_tag: str
-    new_tag: str
-    adoption_mode: str
+    old_source: PlatformSource
+    new_source: PlatformSource
+    old_alpha_commit: str | None
+    new_alpha_commit: str | None
     changed: bool
     verified: bool
+
+
+@dataclass(frozen=True)
+class PlatformSource:
+    """One canonical stable release or alpha development source."""
+
+    channel: str
+    selector: str
+    revision: str
+    adoption_mode: str | None = None
+    promoted_from_alpha: str | None = None
+
+
+@dataclass(frozen=True)
+class VerifiedTag:
+    """Authenticated release content and the commit peeled from its signed tag."""
+
+    manifest: str
+    migration: str
+    commit: str
 
 
 def run_command(arguments: list[str], *, cwd: Path | None = None) -> str:
@@ -124,8 +148,8 @@ def parse_tag(tag: Any, *, field: str) -> tuple[int, int, int]:
     return int(major), int(minor), int(patch)
 
 
-def parse_platform_source(content: str, *, origin: str) -> tuple[str, str]:
-    """Return the exact tag and commit-bound adoption mode from a valid source."""
+def parse_platform_source(content: str, *, origin: str) -> PlatformSource:
+    """Parse one closed canonical stable or alpha platform source."""
     try:
         source = yaml.safe_load(content)
         if not isinstance(source, dict):
@@ -165,11 +189,6 @@ def parse_platform_source(content: str, *, origin: str) -> tuple[str, str]:
         "namespace": "flux-system",
     }:
         raise CompatibilityError(f"{origin} must use canonical source metadata")
-    if set(annotations) != {
-        ADOPTION_MODE_ANNOTATION,
-        ADOPTION_TARGET_ANNOTATION,
-    }:
-        raise CompatibilityError(f"{origin} must use canonical source annotations")
     if set(spec) != {"interval", "url", "ref", "verify"}:
         raise CompatibilityError(f"{origin} must use the canonical source spec")
     if spec["interval"] != "30s":
@@ -178,14 +197,50 @@ def parse_platform_source(content: str, *, origin: str) -> tuple[str, str]:
         raise CompatibilityError(
             f"{origin} must use public source {PLATFORM_SOURCE_URL}"
         )
+    if set(verification) != {"mode", "secretRef"} or set(secret_reference) != {
+        "name"
+    }:
+        raise CompatibilityError(f"{origin} must use canonical source verification")
+
+    if annotations == {CHANNEL_ANNOTATION: "alpha"}:
+        if reference == {"branch": "main"}:
+            selector = "branch"
+            revision = "main"
+        elif set(reference) == {"commit"} and isinstance(reference["commit"], str):
+            selector = "commit"
+            revision = reference["commit"]
+            if COMMIT_SHA_PATTERN.fullmatch(revision) is None:
+                raise CompatibilityError(
+                    f"{origin} alpha commit must be a full 40-hex SHA"
+                )
+        else:
+            raise CompatibilityError(
+                f"{origin} alpha source must select branch main or one full commit"
+            )
+        if verification.get("mode") != "HEAD":
+            raise CompatibilityError(
+                f"{origin} alpha source must use Flux HEAD verification"
+            )
+        if secret_reference.get("name") != "k8s-stack-alpha-trust":
+            raise CompatibilityError(
+                f"{origin} alpha source must use trust Secret k8s-stack-alpha-trust"
+            )
+        return PlatformSource(channel="alpha", selector=selector, revision=revision)
+
+    allowed_stable_annotations = {
+        ADOPTION_MODE_ANNOTATION,
+        ADOPTION_TARGET_ANNOTATION,
+    }
+    if set(annotations) not in (
+        allowed_stable_annotations,
+        allowed_stable_annotations | {PROMOTED_FROM_ALPHA_ANNOTATION},
+    ):
+        raise CompatibilityError(f"{origin} must use canonical source annotations")
     if set(reference) != {"tag"}:
-        raise CompatibilityError(f"{origin} must select exactly one tag")
+        raise CompatibilityError(f"{origin} stable source must select exactly one tag")
     if verification.get("mode") != "Tag":
-        raise CompatibilityError(f"{origin} must retain Flux tag verification")
-    if set(verification) != {"mode", "secretRef"} or set(secret_reference) != {"name"}:
-        raise CompatibilityError(f"{origin} must use canonical tag verification")
-    trust_name = secret_reference.get("name")
-    if trust_name != "k8s-stack-release-trust":
+        raise CompatibilityError(f"{origin} stable source must retain Flux tag verification")
+    if secret_reference.get("name") != "k8s-stack-release-trust":
         raise CompatibilityError(
             f"{origin} must use trust Secret k8s-stack-release-trust"
         )
@@ -203,7 +258,21 @@ def parse_platform_source(content: str, *, origin: str) -> tuple[str, str]:
         raise CompatibilityError(
             f"{origin} annotation {ADOPTION_TARGET_ANNOTATION} must equal {tag}"
         )
-    return tag, adoption_mode
+    promoted_from_alpha = annotations.get(PROMOTED_FROM_ALPHA_ANNOTATION)
+    if promoted_from_alpha is not None and COMMIT_SHA_PATTERN.fullmatch(
+        promoted_from_alpha
+    ) is None:
+        raise CompatibilityError(
+            f"{origin} annotation {PROMOTED_FROM_ALPHA_ANNOTATION} must be a full "
+            "40-hex commit SHA"
+        )
+    return PlatformSource(
+        channel="stable",
+        selector="tag",
+        revision=tag,
+        adoption_mode=adoption_mode,
+        promoted_from_alpha=promoted_from_alpha,
+    )
 
 
 def parse_kustomization(content: str, *, origin: str, resources: list[str]) -> None:
@@ -378,8 +447,71 @@ def fetch_pull_request_refs(
         )
 
 
-def fetch_and_verify_tag(tag: str, expected_fingerprint: str) -> tuple[str, str]:
-    """Fetch a tag, establish trust by fingerprint, and verify its signature."""
+def fetch_base_revision(selector: str, revision: str) -> str:
+    """Resolve one allowed Base branch or peeled tag to a full commit SHA."""
+    if (selector, revision) == ("branch", "main"):
+        reference = "refs/heads/main"
+    elif selector == "commit" and COMMIT_SHA_PATTERN.fullmatch(revision):
+        return revision
+    elif selector == "tag":
+        parse_tag(revision, field="Base tag revision")
+        reference = f"refs/tags/{revision}^{{}}"
+    else:
+        raise CompatibilityError(f"unsupported Base selector: {selector}:{revision}")
+    output = run_command(["git", "ls-remote", PLATFORM_SOURCE_URL, reference]).split()
+    if len(output) != 2 or COMMIT_SHA_PATTERN.fullmatch(output[0]) is None:
+        raise CompatibilityError(f"cannot resolve Base {selector} {revision}")
+    return output[0]
+
+
+def is_base_ancestor(ancestor: str, descendant: str) -> bool:
+    """Return whether one Base commit is an ancestor of another."""
+    for name, revision in (("ancestor", ancestor), ("descendant", descendant)):
+        if COMMIT_SHA_PATTERN.fullmatch(revision) is None:
+            raise CompatibilityError(f"{name} must be a full 40-hex commit SHA")
+    with tempfile.TemporaryDirectory(prefix="platform-ancestry-") as temporary:
+        repository = Path(temporary) / "base"
+        repository.mkdir()
+        run_command(["git", "init", "--quiet"], cwd=repository)
+        run_command(
+            ["git", "remote", "add", "origin", PLATFORM_SOURCE_URL], cwd=repository
+        )
+        run_command(
+            [
+                "git",
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "origin",
+                ancestor,
+                descendant,
+            ],
+            cwd=repository,
+        )
+        try:
+            result = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+                cwd=repository,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise CompatibilityError(
+                "Base ancestry comparison timed out after "
+                f"{COMMAND_TIMEOUT_SECONDS} seconds"
+            ) from error
+        if result.returncode == 0:
+            return True
+        if result.returncode == 1:
+            return False
+        detail = (result.stderr or result.stdout).strip()
+        raise CompatibilityError(f"cannot compare Base revisions: {detail[:1000]}")
+
+
+def fetch_and_verify_tag(tag: str, expected_fingerprint: str) -> VerifiedTag:
+    """Fetch a tag, verify its signature, and expose its peeled commit."""
     with tempfile.TemporaryDirectory(prefix="platform-release-") as temporary:
         repository = Path(temporary) / "base"
         repository.mkdir()
@@ -451,7 +583,12 @@ def fetch_and_verify_tag(tag: str, expected_fingerprint: str) -> tuple[str, str]
         migration = run_command(
             ["git", "show", f"{tag_ref}:release/migrations/{tag}.md"], cwd=repository
         )
-        return manifest, migration
+        commit = run_command(
+            ["git", "rev-parse", f"{tag_ref}^{{commit}}"], cwd=repository
+        ).strip()
+        if COMMIT_SHA_PATTERN.fullmatch(commit) is None:
+            raise CompatibilityError(f"{tag} did not peel to a full commit SHA")
+        return VerifiedTag(manifest=manifest, migration=migration, commit=commit)
 
 
 def fetch_release(tag: str, token: str | None) -> dict[str, Any]:
@@ -602,6 +739,104 @@ def parse_recovery_contract(recovery: str) -> str:
         ) from error
 
 
+def parse_alpha_source_revisions(support: str) -> set[str] | None:
+    """Parse the optional exact alpha promotion declaration from Support."""
+    prefix = "- Supported alpha source revisions: "
+    declarations = [
+        line.removeprefix(prefix)
+        for line in support.splitlines()
+        if line.startswith(prefix)
+    ]
+    if not declarations:
+        return None
+    if len(declarations) != 1 or not declarations[0].endswith("."):
+        raise CompatibilityError(
+            "migration Support must contain exactly one '- Supported alpha source "
+            "revisions:' declaration"
+        )
+    value = declarations[0][:-1]
+    if value == "None":
+        return set()
+    revisions: list[str] = []
+    for item in value.split(","):
+        match = re.fullmatch(r"`([0-9a-f]{40})`", item.strip())
+        if match is None:
+            raise CompatibilityError(
+                "Supported alpha source revisions must be None or comma-separated "
+                "full 40-hex SHAs in backticks"
+            )
+        revisions.append(match.group(1))
+    if len(revisions) != len(set(revisions)):
+        raise CompatibilityError("Supported alpha source revisions contain duplicates")
+    return set(revisions)
+
+
+def validate_alpha_promotion_contract(
+    source_revision: str,
+    target: PlatformSource,
+    verified_tag: VerifiedTag,
+    release: dict[str, Any],
+    expected_fingerprint: str,
+    *,
+    forward: bool,
+) -> None:
+    """Validate an authenticated stable target promoted from alpha."""
+    tag = target.revision
+    validate_release_contract(
+        tag,
+        tag,
+        verified_tag.manifest,
+        verified_tag.migration,
+        release,
+        target.adoption_mode or "",
+        expected_fingerprint,
+        validate_transition=False,
+    )
+    try:
+        manifest = yaml.safe_load(verified_tag.manifest)
+        compatibility = manifest["spec"]["compatibility"]
+    except (TypeError, KeyError, yaml.YAMLError) as error:
+        raise CompatibilityError(f"{tag} release manifest is malformed") from error
+    sections = migration_sections(verified_tag.migration, tag)
+    manifest_revisions: set[str] | None = None
+    if "upgradesFromAlphaRevisions" in compatibility:
+        revisions = compatibility["upgradesFromAlphaRevisions"]
+        if not isinstance(revisions, list) or not all(
+            isinstance(revision, str) and COMMIT_SHA_PATTERN.fullmatch(revision)
+            for revision in revisions
+        ):
+            raise CompatibilityError(
+                "manifest compatibility.upgradesFromAlphaRevisions must be a list of "
+                "full 40-hex SHAs"
+            )
+        if len(revisions) != len(set(revisions)):
+            raise CompatibilityError(
+                "manifest compatibility.upgradesFromAlphaRevisions contains duplicates"
+            )
+        manifest_revisions = set(revisions)
+    migration_revisions = parse_alpha_source_revisions(sections["Support"])
+    if manifest_revisions != migration_revisions:
+        raise CompatibilityError(
+            "migration Supported alpha source revisions must exactly equal manifest "
+            "upgradesFromAlphaRevisions"
+        )
+    if target.adoption_mode == "fresh-install":
+        if compatibility.get("freshInstall") != "supported":
+            raise CompatibilityError(f"{tag} does not support fresh installation")
+        return
+    if not forward:
+        return
+    if manifest_revisions is None:
+        raise CompatibilityError(
+            "forward alpha upgrade requires upgradesFromAlphaRevisions and the "
+            "Supported alpha source revisions migration declaration"
+        )
+    if source_revision not in manifest_revisions:
+        raise CompatibilityError(
+            "target manifest does not list the exact promoted alpha source revision"
+        )
+
+
 def validate_release_contract(
     old_tag: str,
     new_tag: str,
@@ -610,15 +845,18 @@ def validate_release_contract(
     release: dict[str, Any],
     adoption_mode: str,
     expected_fingerprint: str,
+    *,
+    validate_transition: bool = True,
 ) -> None:
     """Validate version, release, compatibility, and migration agreement."""
-    old_version = parse_tag(old_tag, field="base platform pin")
     new_version = parse_tag(new_tag, field="proposed platform pin")
-    if new_version <= old_version:
-        direction = "unchanged" if new_version == old_version else "a downgrade"
-        raise CompatibilityError(
-            f"platform transition is {direction}: {old_tag} -> {new_tag}"
-        )
+    if validate_transition:
+        old_version = parse_tag(old_tag, field="base platform pin")
+        if new_version <= old_version:
+            direction = "unchanged" if new_version == old_version else "a downgrade"
+            raise CompatibilityError(
+                f"platform transition is {direction}: {old_tag} -> {new_tag}"
+            )
 
     try:
         manifest = yaml.safe_load(manifest_text)
@@ -721,6 +959,8 @@ def validate_release_contract(
             "manifest must explicitly mark downgrade as unsupported"
         )
 
+    if not validate_transition:
+        return
     if adoption_mode == "upgrade":
         if old_tag not in normalized_upgrades_from:
             raise CompatibilityError(
@@ -742,18 +982,16 @@ def run_check(
     github_token: str | None,
     *,
     classify_only: bool = False,
+    expected_old_alpha_commit: str | None = None,
+    expected_new_alpha_commit: str | None = None,
     revision_reader: Callable[[Path, str, Path], str] = read_at_revision,
     source_ignore_finder: Callable[[Path, str], list[str]] = source_ignore_paths,
-    tag_fetcher: Callable[[str, str], tuple[str, str]] = fetch_and_verify_tag,
+    tag_fetcher: Callable[[str, str], VerifiedTag] = fetch_and_verify_tag,
     release_fetcher: Callable[[str, str | None], dict[str, Any]] = fetch_release,
+    base_revision_fetcher: Callable[[str, str], str] = fetch_base_revision,
+    ancestor_checker: Callable[[str, str], bool] = is_base_ancestor,
 ) -> CheckResult:
     """Classify or verify a transition using only explicit Git revisions."""
-    if FINGERPRINT_PATTERN.fullmatch(expected_fingerprint) is None:
-        raise CompatibilityError(
-            "PLATFORM_RELEASE_SIGNER_FINGERPRINT is missing or invalid; configure the "
-            "out-of-band trusted SHA256 fingerprint as a GitHub Actions repository "
-            "variable"
-        )
     for revision in (base_sha, proposed_sha):
         ignored_paths = source_ignore_finder(root, revision)
         if ignored_paths:
@@ -763,10 +1001,10 @@ def run_check(
             )
     base_content = revision_reader(root, base_sha, PLATFORM_SOURCE_PATH)
     proposed_content = revision_reader(root, proposed_sha, PLATFORM_SOURCE_PATH)
-    old_tag, old_adoption_mode = parse_platform_source(
+    old_source = parse_platform_source(
         base_content, origin=f"base {base_sha}"
     )
-    new_tag, adoption_mode = parse_platform_source(
+    new_source = parse_platform_source(
         proposed_content, origin=f"proposed {proposed_sha}"
     )
     base_control_plane = read_control_plane_contract(root, base_sha, revision_reader)
@@ -777,37 +1015,231 @@ def run_check(
         raise CompatibilityError(
             "Flux bootstrap controls may not change in a platform adoption pull request"
         )
-    if old_tag == new_tag:
-        if old_adoption_mode != adoption_mode:
-            raise CompatibilityError(
-                "platform adoption mode may change only with the exact platform tag"
-            )
-        return CheckResult(
-            old_tag, new_tag, adoption_mode, changed=False, verified=False
-        )
-    if parse_tag(new_tag, field="proposed platform pin") < parse_tag(
-        old_tag, field="base platform pin"
+    if (
+        old_source.channel == "alpha"
+        and old_source.selector == "branch"
+        and new_source.channel == "stable"
     ):
         raise CompatibilityError(
-            f"platform downgrade is prohibited: {old_tag} -> {new_tag}"
+            "alpha branch cannot transition directly to stable; freeze the source to "
+            "the observed alpha commit and reconcile it first"
+        )
+    resolved_revisions: dict[tuple[str, str], str] = {}
+
+    def validated_commit(value: str, field: str) -> str:
+        if COMMIT_SHA_PATTERN.fullmatch(value) is None:
+            raise CompatibilityError(f"{field} must resolve to a full 40-hex commit SHA")
+        return value
+
+    def resolve(selector: str, revision: str) -> str:
+        key = (selector, revision)
+        if key not in resolved_revisions:
+            resolved_revisions[key] = validated_commit(
+                base_revision_fetcher(selector, revision),
+                f"Base {selector}:{revision}",
+            )
+        return resolved_revisions[key]
+
+    def resolve_alpha(source: PlatformSource) -> str | None:
+        if source.channel != "alpha":
+            return None
+        if source.selector == "branch":
+            return resolve("branch", "main")
+        pinned_commit = resolve("commit", source.revision)
+        main_commit = resolve("branch", "main")
+        if pinned_commit != main_commit and not ancestor_checker(
+            pinned_commit, main_commit
+        ):
+            raise CompatibilityError(
+                "alpha commit must be equal to or an ancestor of protected Base main"
+            )
+        return pinned_commit
+
+    old_alpha_commit = resolve_alpha(old_source)
+    new_alpha_commit = resolve_alpha(new_source)
+    for name, expected, actual in (
+        ("old", expected_old_alpha_commit, old_alpha_commit),
+        ("new", expected_new_alpha_commit, new_alpha_commit),
+    ):
+        if expected is not None:
+            if COMMIT_SHA_PATTERN.fullmatch(expected) is None:
+                raise CompatibilityError(
+                    f"expected {name} alpha commit must be a full 40-hex SHA"
+                )
+            if actual != expected:
+                raise CompatibilityError(
+                    f"resolved {name} alpha commit changed from {expected} to {actual}"
+                )
+
+    changed = old_source != new_source
+    if old_source.channel == "alpha" and new_source.channel == "alpha":
+        assert old_alpha_commit is not None
+        assert new_alpha_commit is not None
+        if (
+            old_source.selector == "branch"
+            and new_source.selector == "commit"
+            and old_alpha_commit != new_alpha_commit
+        ):
+            raise CompatibilityError(
+                "alpha freeze commit must exactly equal the resolved protected Base "
+                "main revision"
+            )
+        if (
+            old_source.selector == "commit"
+            and new_source.selector == "commit"
+            and old_alpha_commit != new_alpha_commit
+            and not ancestor_checker(old_alpha_commit, new_alpha_commit)
+        ):
+            raise CompatibilityError("alpha commit source may not move backward or diverge")
+        return CheckResult(
+            old_source,
+            new_source,
+            old_alpha_commit,
+            new_alpha_commit,
+            changed=changed,
+            verified=changed and not classify_only,
+        )
+
+    if old_source.channel == "stable" and new_source.channel == "stable":
+        if FINGERPRINT_PATTERN.fullmatch(expected_fingerprint) is None:
+            raise CompatibilityError(
+                "PLATFORM_RELEASE_SIGNER_FINGERPRINT is missing or invalid; configure "
+                "the out-of-band trusted SHA256 fingerprint as a GitHub Actions "
+                "repository variable"
+            )
+        if old_source.revision == new_source.revision:
+            if old_source != new_source:
+                raise CompatibilityError(
+                    "stable source annotations may change only with the exact platform tag"
+                )
+            return CheckResult(
+                old_source,
+                new_source,
+                old_alpha_commit,
+                new_alpha_commit,
+                changed=False,
+                verified=False,
+            )
+        if new_source.promoted_from_alpha is not None:
+            raise CompatibilityError(
+                f"{PROMOTED_FROM_ALPHA_ANNOTATION} is valid only for alpha-to-stable "
+                "transitions"
+            )
+        if parse_tag(new_source.revision, field="proposed platform pin") < parse_tag(
+            old_source.revision, field="base platform pin"
+        ):
+            raise CompatibilityError(
+                "platform downgrade is prohibited: "
+                f"{old_source.revision} -> {new_source.revision}"
+            )
+        if classify_only:
+            return CheckResult(
+                old_source,
+                new_source,
+                old_alpha_commit,
+                new_alpha_commit,
+                changed=True,
+                verified=False,
+            )
+        verified_tag = tag_fetcher(new_source.revision, expected_fingerprint)
+        release = release_fetcher(new_source.revision, github_token)
+        validate_release_contract(
+            old_source.revision,
+            new_source.revision,
+            verified_tag.manifest,
+            verified_tag.migration,
+            release,
+            new_source.adoption_mode or "",
+            expected_fingerprint,
+        )
+        return CheckResult(
+            old_source,
+            new_source,
+            old_alpha_commit,
+            new_alpha_commit,
+            changed=True,
+            verified=True,
+        )
+
+    if old_source.channel == "stable" and new_source.channel == "alpha":
+        if FINGERPRINT_PATTERN.fullmatch(expected_fingerprint) is None:
+            raise CompatibilityError(
+                "PLATFORM_RELEASE_SIGNER_FINGERPRINT is missing or invalid; configure "
+                "the out-of-band trusted SHA256 fingerprint as a GitHub Actions "
+                "repository variable"
+            )
+        verified_baseline = tag_fetcher(old_source.revision, expected_fingerprint)
+        baseline_commit = validated_commit(
+            verified_baseline.commit, "authenticated stable tag"
+        )
+        assert new_alpha_commit is not None
+        if baseline_commit != new_alpha_commit and not ancestor_checker(
+            baseline_commit, new_alpha_commit
+        ):
+            raise CompatibilityError(
+                "selected alpha revision is behind or divergent from the authenticated "
+                "stable release"
+            )
+        return CheckResult(
+            old_source,
+            new_source,
+            old_alpha_commit,
+            new_alpha_commit,
+            changed=True,
+            verified=not classify_only,
+        )
+
+    if FINGERPRINT_PATTERN.fullmatch(expected_fingerprint) is None:
+        raise CompatibilityError(
+            "PLATFORM_RELEASE_SIGNER_FINGERPRINT is missing or invalid; configure the "
+            "out-of-band trusted SHA256 fingerprint as a GitHub Actions repository "
+            "variable"
+        )
+    assert old_alpha_commit is not None
+    observed_revision = old_alpha_commit
+    if new_source.promoted_from_alpha != observed_revision:
+        raise CompatibilityError(
+            f"{PROMOTED_FROM_ALPHA_ANNOTATION} must equal the exact observed Base main "
+            f"revision {observed_revision}"
+        )
+    if classify_only:
+        target_commit = resolve(new_source.selector, new_source.revision)
+        verified_tag = None
+    else:
+        verified_tag = tag_fetcher(new_source.revision, expected_fingerprint)
+        target_commit = validated_commit(verified_tag.commit, "authenticated stable tag")
+    exact_commit = target_commit == observed_revision
+    if not exact_commit and not ancestor_checker(observed_revision, target_commit):
+        raise CompatibilityError(
+            "stable target is behind or divergent from the observed alpha revision"
         )
     if classify_only:
         return CheckResult(
-            old_tag, new_tag, adoption_mode, changed=True, verified=False
+            old_source,
+            new_source,
+            old_alpha_commit,
+            new_alpha_commit,
+            changed=True,
+            verified=False,
         )
-
-    manifest, migration = tag_fetcher(new_tag, expected_fingerprint)
-    release = release_fetcher(new_tag, github_token)
-    validate_release_contract(
-        old_tag,
-        new_tag,
-        manifest,
-        migration,
+    assert verified_tag is not None
+    release = release_fetcher(new_source.revision, github_token)
+    validate_alpha_promotion_contract(
+        observed_revision,
+        new_source,
+        verified_tag,
         release,
-        adoption_mode,
         expected_fingerprint,
+        forward=not exact_commit,
     )
-    return CheckResult(old_tag, new_tag, adoption_mode, changed=True, verified=True)
+    return CheckResult(
+        old_source,
+        new_source,
+        old_alpha_commit,
+        new_alpha_commit,
+        changed=True,
+        verified=True,
+    )
 
 
 def main() -> int:
@@ -817,6 +1249,8 @@ def main() -> int:
     parser.add_argument("--merge-sha")
     parser.add_argument("--pull-request-number", type=int)
     parser.add_argument("--classify-only", action="store_true")
+    parser.add_argument("--expected-old-alpha-commit")
+    parser.add_argument("--expected-new-alpha-commit")
     parser.add_argument("--github-output", type=Path)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     arguments = parser.parse_args()
@@ -842,30 +1276,41 @@ def main() -> int:
             os.environ.get("PLATFORM_RELEASE_SIGNER_FINGERPRINT", ""),
             os.environ.get("GITHUB_TOKEN"),
             classify_only=arguments.classify_only,
+            expected_old_alpha_commit=arguments.expected_old_alpha_commit or None,
+            expected_new_alpha_commit=arguments.expected_new_alpha_commit or None,
         )
     except (CompatibilityError, OSError) as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1
     if arguments.github_output is not None:
         with arguments.github_output.open("a", encoding="utf-8") as output:
-            output.write(f"old_tag={result.old_tag}\n")
-            output.write(f"new_tag={result.new_tag}\n")
-            output.write(f"adoption_mode={result.adoption_mode}\n")
-            output.write(f"platform_pin_changed={str(result.changed).lower()}\n")
+            output.write(f"old_source_channel={result.old_source.channel}\n")
+            output.write(f"old_source_selector={result.old_source.selector}\n")
+            output.write(f"old_source_revision={result.old_source.revision}\n")
+            output.write(f"new_source_channel={result.new_source.channel}\n")
+            output.write(f"new_source_selector={result.new_source.selector}\n")
+            output.write(f"new_source_revision={result.new_source.revision}\n")
+            output.write(f"old_alpha_commit={result.old_alpha_commit or ''}\n")
+            output.write(f"new_alpha_commit={result.new_alpha_commit or ''}\n")
+            output.write(
+                f"adoption_mode={result.new_source.adoption_mode or 'not-applicable'}\n"
+            )
+            output.write(f"platform_source_changed={str(result.changed).lower()}\n")
             output.write(f"platform_verified={str(result.verified).lower()}\n")
+    old_display = (
+        f"{result.old_source.channel} "
+        f"{result.old_source.selector}:{result.old_source.revision}"
+    )
+    new_display = (
+        f"{result.new_source.channel} "
+        f"{result.new_source.selector}:{result.new_source.revision}"
+    )
     if result.changed and result.verified:
-        print(
-            "verified compatible platform transition "
-            f"{result.old_tag} -> {result.new_tag}"
-        )
+        print(f"verified compatible platform transition {old_display} -> {new_display}")
     elif result.changed:
-        print(f"platform pin change classified: {result.old_tag} -> {result.new_tag}")
+        print(f"platform source change classified: {old_display} -> {new_display}")
     else:
-        print(
-            f"platform pin unchanged at {result.new_tag}; trusted signer variable "
-            "checked "
-            "and network release verification skipped"
-        )
+        print(f"platform source unchanged at {new_display}; release verification skipped")
     return 0
 
 
