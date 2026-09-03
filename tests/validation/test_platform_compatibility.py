@@ -1470,6 +1470,13 @@ class PlatformCompatibilityTests(unittest.TestCase):
         self.assertIn("push", refresh["on"])
         self.assertNotIn("workflow_dispatch", refresh["on"])
         self.assertEqual(refresh["jobs"]["evaluate"]["secrets"], "inherit")
+        discovery = refresh["jobs"]["discover"]["steps"][0]["run"]
+        self.assertIn("set -o pipefail", discovery)
+        self.assertIn("gh api --paginate --slurp", discovery)
+        self.assertNotIn("--jq", discovery)
+        self.assertIn(
+            "jq -c '[.[][] | {pull_request_number: .number}]'", discovery
+        )
 
     def test_all_workflow_actions_are_pinned_to_full_shas(self) -> None:
         for path in (ROOT / ".github/workflows").glob("*.yaml"):
