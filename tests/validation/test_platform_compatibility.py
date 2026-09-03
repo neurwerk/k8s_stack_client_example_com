@@ -1420,7 +1420,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             workflow["jobs"]["evaluate"]["uses"],
             "./.github/workflows/platform-compatibility-evaluate.yaml",
         )
-        self.assertNotIn("secrets", workflow["jobs"]["evaluate"])
+        self.assertEqual(workflow["jobs"]["evaluate"]["secrets"], "inherit")
 
         evaluate_path = ROOT / ".github/workflows/platform-compatibility-evaluate.yaml"
         evaluate = yaml.load(evaluate_path.read_text(), Loader=yaml.BaseLoader)
@@ -1469,7 +1469,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
         )
         self.assertIn("push", refresh["on"])
         self.assertNotIn("workflow_dispatch", refresh["on"])
-        self.assertNotIn("secrets", refresh["jobs"]["evaluate"])
+        self.assertEqual(refresh["jobs"]["evaluate"]["secrets"], "inherit")
 
     def test_all_workflow_actions_are_pinned_to_full_shas(self) -> None:
         for path in (ROOT / ".github/workflows").glob("*.yaml"):
