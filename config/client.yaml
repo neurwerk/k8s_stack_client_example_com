@@ -3,6 +3,14 @@
 publicCertificates:
   useProduction: false
 
+# Optional inherited OpenRouter catalog controls:
+# openrouterCatalog:
+#   enabled: false
+#   excludedModels: [publisher/model]
+#   grantToAccessGroups: false
+# Also remove explicit Dify grants/configuration for any disabled or excluded
+# inherited model; the platform validates those subsets fail-closed.
+
 #
 # ── Resource sizing + replica counts for all charts ───────────────────────────
 # This follows base/releases/shared/resources.yaml with client-specific overrides.
@@ -37,119 +45,19 @@ authKeycloak:
     - model:remote/openrouter/deepseek-v4-flash:invoke
   agentgatewayClientRoles:
     - llm:invoke
-    - model:remote/openrouter/ox-alpha:invoke
-    - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-    - model:remote/openrouter/mimo-v2.5:invoke
-    - model:remote/openrouter/hy3:invoke
-    - model:remote/openrouter/deepseek-v4-flash:invoke
-    - model:remote/openrouter/nemotron-3-ultra-free:invoke
-    - model:remote/openrouter/gpt-5.6-luna:invoke
-    - model:remote/openrouter/glm-5.2:invoke
-    - model:remote/openrouter/gemini-3.7-flash:invoke
-    - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-    - model:remote/openrouter/minimax-m3:invoke
-    - model:remote/openrouter/laguna-s-2.1-free:invoke
-    - model:remote/openrouter/claude-opus-5:invoke
-    - model:remote/openrouter/gpt-5.6-sol:invoke
-    - model:remote/openrouter/kimi-k3:invoke
-    - model:remote/openrouter/claude-sonnet-5:invoke
-    - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-    - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-    - model:remote/openrouter/gemini-3-flash-preview:invoke
-    - model:remote/openrouter/gemini-2.5-flash-lite:invoke
     - model:local/llama3.2-3b:invoke
   agentgatewayAccessGroups:
     /access/librechat-admins:
       - llm:invoke
-      - model:remote/openrouter/ox-alpha:invoke
-      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-      - model:remote/openrouter/mimo-v2.5:invoke
-      - model:remote/openrouter/hy3:invoke
-      - model:remote/openrouter/deepseek-v4-flash:invoke
-      - model:remote/openrouter/nemotron-3-ultra-free:invoke
-      - model:remote/openrouter/gpt-5.6-luna:invoke
-      - model:remote/openrouter/glm-5.2:invoke
-      - model:remote/openrouter/gemini-3.7-flash:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-      - model:remote/openrouter/minimax-m3:invoke
-      - model:remote/openrouter/laguna-s-2.1-free:invoke
-      - model:remote/openrouter/claude-opus-5:invoke
-      - model:remote/openrouter/gpt-5.6-sol:invoke
-      - model:remote/openrouter/kimi-k3:invoke
-      - model:remote/openrouter/claude-sonnet-5:invoke
-      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-      - model:remote/openrouter/gemini-3-flash-preview:invoke
-      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
       - model:local/llama3.2-3b:invoke
     /access/librechat-users:
       - llm:invoke
-      - model:remote/openrouter/ox-alpha:invoke
-      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-      - model:remote/openrouter/mimo-v2.5:invoke
-      - model:remote/openrouter/hy3:invoke
-      - model:remote/openrouter/deepseek-v4-flash:invoke
-      - model:remote/openrouter/nemotron-3-ultra-free:invoke
-      - model:remote/openrouter/gpt-5.6-luna:invoke
-      - model:remote/openrouter/glm-5.2:invoke
-      - model:remote/openrouter/gemini-3.7-flash:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-      - model:remote/openrouter/minimax-m3:invoke
-      - model:remote/openrouter/laguna-s-2.1-free:invoke
-      - model:remote/openrouter/claude-opus-5:invoke
-      - model:remote/openrouter/gpt-5.6-sol:invoke
-      - model:remote/openrouter/kimi-k3:invoke
-      - model:remote/openrouter/claude-sonnet-5:invoke
-      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-      - model:remote/openrouter/gemini-3-flash-preview:invoke
-      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
       - model:local/llama3.2-3b:invoke
     /access/platform-admins:
       - llm:invoke
-      - model:remote/openrouter/ox-alpha:invoke
-      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-      - model:remote/openrouter/mimo-v2.5:invoke
-      - model:remote/openrouter/hy3:invoke
-      - model:remote/openrouter/deepseek-v4-flash:invoke
-      - model:remote/openrouter/nemotron-3-ultra-free:invoke
-      - model:remote/openrouter/gpt-5.6-luna:invoke
-      - model:remote/openrouter/glm-5.2:invoke
-      - model:remote/openrouter/gemini-3.7-flash:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-      - model:remote/openrouter/minimax-m3:invoke
-      - model:remote/openrouter/laguna-s-2.1-free:invoke
-      - model:remote/openrouter/claude-opus-5:invoke
-      - model:remote/openrouter/gpt-5.6-sol:invoke
-      - model:remote/openrouter/kimi-k3:invoke
-      - model:remote/openrouter/claude-sonnet-5:invoke
-      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-      - model:remote/openrouter/gemini-3-flash-preview:invoke
-      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
       - model:local/llama3.2-3b:invoke
     /access/studio-users:
       - llm:invoke
-      - model:remote/openrouter/ox-alpha:invoke
-      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-      - model:remote/openrouter/mimo-v2.5:invoke
-      - model:remote/openrouter/hy3:invoke
-      - model:remote/openrouter/deepseek-v4-flash:invoke
-      - model:remote/openrouter/nemotron-3-ultra-free:invoke
-      - model:remote/openrouter/gpt-5.6-luna:invoke
-      - model:remote/openrouter/glm-5.2:invoke
-      - model:remote/openrouter/gemini-3.7-flash:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-      - model:remote/openrouter/minimax-m3:invoke
-      - model:remote/openrouter/laguna-s-2.1-free:invoke
-      - model:remote/openrouter/claude-opus-5:invoke
-      - model:remote/openrouter/gpt-5.6-sol:invoke
-      - model:remote/openrouter/kimi-k3:invoke
-      - model:remote/openrouter/claude-sonnet-5:invoke
-      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-      - model:remote/openrouter/gemini-3-flash-preview:invoke
-      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
       - model:local/llama3.2-3b:invoke
   keycloak:
     resources:

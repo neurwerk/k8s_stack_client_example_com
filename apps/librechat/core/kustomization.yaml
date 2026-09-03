@@ -10,3 +10,6 @@ configMapGenerator:
   - name: librechat-product-values
     files:
       - values.yaml=../values.yaml
+  - name: librechat-agentgateway-model-values
+    files:
+      - values.yaml=../../../infrastructure/networking/agentgateway/values.yaml

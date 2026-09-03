@@ -127,6 +127,16 @@ class RepositoryContractTests(unittest.TestCase):
                 values = load_yaml(path)
                 self.assertTrue(values is None or isinstance(values, dict))
 
+    def test_librechat_imports_the_canonical_agentgateway_model_values(self) -> None:
+        path = ROOT / "apps/librechat/core/kustomization.yaml"
+        generators = load_yaml(path)["configMapGenerator"]
+        by_name = {generator["name"]: generator for generator in generators}
+
+        self.assertEqual(
+            assignment_target(path, by_name["librechat-agentgateway-model-values"]),
+            (ROOT / "infrastructure/networking/agentgateway/values.yaml").resolve(),
+        )
+
     def test_leaf_kustomizations_generate_stable_namespace_local_values(self) -> None:
         generated_product_values: set[Path] = set()
         product_values = {

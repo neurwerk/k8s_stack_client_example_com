@@ -11,29 +11,8 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
-
-OPENROUTER_MODELS = {
-    "remote/openrouter/ox-alpha": "stealth/ox-alpha",
-    "remote/openrouter/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash-0731",
-    "remote/openrouter/mimo-v2.5": "xiaomi/mimo-v2.5",
-    "remote/openrouter/hy3": "tencent/hy3",
-    "remote/openrouter/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
-    "remote/openrouter/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "remote/openrouter/gpt-5.6-luna": "openai/gpt-5.6-luna",
-    "remote/openrouter/glm-5.2": "z-ai/glm-5.2",
-    "remote/openrouter/gemini-3.7-flash": "google/gemini-3.7-flash",
-    "remote/openrouter/deepseek-v4-pro-0423": "deepseek/deepseek-v4-pro",
-    "remote/openrouter/minimax-m3": "minimax/minimax-m3",
-    "remote/openrouter/laguna-s-2.1-free": "poolside/laguna-s-2.1:free",
-    "remote/openrouter/claude-opus-5": "anthropic/claude-opus-5",
-    "remote/openrouter/gpt-5.6-sol": "openai/gpt-5.6-sol",
-    "remote/openrouter/kimi-k3": "moonshotai/kimi-k3",
-    "remote/openrouter/claude-sonnet-5": "anthropic/claude-sonnet-5",
-    "remote/openrouter/nemotron-3.5-lightning-free": "nvidia/nemotron-3.5-lightning:free",
-    "remote/openrouter/deepseek-v4-pro-0813": "deepseek/deepseek-v4-pro-0813",
-    "remote/openrouter/gemini-3-flash-preview": "google/gemini-3-flash-preview",
-    "remote/openrouter/gemini-2.5-flash-lite": "google/gemini-2.5-flash-lite",
-}
+OPENROUTER_PREFIX = "remote/openrouter/"
+DIFY_INHERITED_MODEL = "remote/openrouter/deepseek-v4-flash"
 
 
 def load_yaml(path: str) -> Any:
@@ -90,16 +69,13 @@ class DestinationPolicyTests(unittest.TestCase):
         self.mcp = self.values["mcp"]
         self.servers = self.mcp.get("servers", [])
 
-    def test_model_catalog_has_exact_destination_policies(self) -> None:
+    def test_client_model_catalog_has_exact_destination_policies(self) -> None:
         gateway = load_yaml("infrastructure/networking/agentgateway/values.yaml")
         models = {
             model["name"]: model
             for model in gateway["guardrails"]["llmPolicyEngine"]["models"]
         }
-        expected_flags = {
-            **{name: (True, True) for name in OPENROUTER_MODELS},
-            "local/llama3.2-3b": (False, True),
-        }
+        expected_flags = {"local/llama3.2-3b": (False, True)}
 
         self.assertEqual(set(models), set(expected_flags))
         self.assertEqual(
@@ -109,19 +85,11 @@ class DestinationPolicyTests(unittest.TestCase):
             },
             expected_flags,
         )
-        self.assertEqual(
-            {name for name, model in models.items() if model.get("piiReroute") is True},
-            set(OPENROUTER_MODELS),
-        )
-        self.assertEqual(
-            {name: models[name]["model"] for name in OPENROUTER_MODELS},
-            OPENROUTER_MODELS,
-        )
-        self.assertTrue(
-            all(
-                models[name]["baseURL"] == "https://openrouter.ai/api/v1"
-                and models[name]["provider"] == "Openrouter"
-                for name in OPENROUTER_MODELS
+        self.assertFalse(any(name.startswith(OPENROUTER_PREFIX) for name in models))
+        self.assertFalse(
+            any(
+                model.get("provider", "").lower() == "openrouter"
+                for model in models.values()
             )
         )
         local_ids = {name for name, model in models.items() if model.get("local") is True}
@@ -160,7 +128,7 @@ class DestinationPolicyTests(unittest.TestCase):
                 True,
             )
 
-    def test_permissions_are_duplicate_free_catalog_subsets(self) -> None:
+    def test_broad_permissions_are_duplicate_free_catalog_subsets(self) -> None:
         client = load_yaml("config/client.yaml")
         auth = client["authKeycloak"]
         model_ids = {model["name"] for model in self.models}
@@ -171,9 +139,6 @@ class DestinationPolicyTests(unittest.TestCase):
 
         permission_sets = {
             "agentgatewayClientRoles": auth.get("agentgatewayClientRoles", []),
-            "difyAgentgatewayClientRoles": auth.get(
-                "difyAgentgatewayClientRoles", []
-            ),
         }
         permission_sets.update(auth.get("agentgatewayAccessGroups", {}))
 
@@ -183,6 +148,33 @@ class DestinationPolicyTests(unittest.TestCase):
                 self.assertTrue(all(isinstance(item, str) for item in permissions))
                 self.assertEqual(len(permissions), len(set(permissions)))
                 self.assertLessEqual(set(permissions), allowed)
+                self.assertFalse(
+                    any(
+                        permission.startswith(f"model:{OPENROUTER_PREFIX}")
+                        for permission in permissions
+                    )
+                )
+
+    def test_openrouter_overrides_are_valid_if_configured(self) -> None:
+        catalog = self.client.get("openrouterCatalog")
+        if catalog is None:
+            return
+
+        self.assertIsInstance(catalog, dict)
+        self.assertLessEqual(
+            set(catalog), {"enabled", "excludedModels", "grantToAccessGroups"}
+        )
+        for flag in ("enabled", "grantToAccessGroups"):
+            if flag in catalog:
+                self.assertIs(type(catalog[flag]), bool)
+        if "excludedModels" in catalog:
+            excluded = catalog["excludedModels"]
+            self.assertIsInstance(excluded, list)
+            self.assertEqual(len(excluded), len(set(excluded)))
+            for upstream_id in excluded:
+                self.assertIsInstance(upstream_id, str)
+                self.assertRegex(upstream_id, r"^[^/\s]+/[^\s]+$")
+                self.assertFalse(upstream_id.startswith(OPENROUTER_PREFIX))
 
     def test_destination_flags_only_live_in_their_canonical_catalogs(self) -> None:
         flags = {"piiEnabled", "contentTracingEnabled"}
@@ -208,7 +200,7 @@ class DestinationPolicyTests(unittest.TestCase):
                 with self.subTest(path=relative_path, value_path=path):
                     self.assertTrue(model_flag or mcp_flag)
 
-    def test_catalog_authorization_is_exact(self) -> None:
+    def test_client_catalog_authorization_is_exact_and_dify_stays_explicit(self) -> None:
         auth = self.client["authKeycloak"]
         expected = {"llm:invoke"}
         expected.update(f'model:{model["name"]}:invoke' for model in self.models)
@@ -223,14 +215,12 @@ class DestinationPolicyTests(unittest.TestCase):
                 self.assertEqual(set(permissions), expected)
                 self.assertEqual(len(permissions), len(expected))
 
-        dify_expected = {
+        dify_expected = [
             "llm:invoke",
-            "model:remote/openrouter/deepseek-v4-flash:invoke",
-        }
+            f"model:{DIFY_INHERITED_MODEL}:invoke",
+        ]
         dify_roles = auth["difyAgentgatewayClientRoles"]
-        self.assertEqual(set(dify_roles), dify_expected)
-        self.assertEqual(len(dify_roles), len(dify_expected))
-        self.assertLess(set(dify_roles), expected)
+        self.assertEqual(dify_roles, dify_expected)
 
     def test_local_models_and_reroutes_have_a_configured_fallback(self) -> None:
         rerouted = [model for model in self.models if model.get("piiReroute") is True]
