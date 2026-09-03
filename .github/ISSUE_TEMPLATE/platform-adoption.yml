@@ -54,5 +54,5 @@ body:
           required: true
         - label: "Maintainer review covers the exact source transition; merging that reviewed commit is the adoption authorization."
           required: true
-        - label: "Stable transitions satisfy release compatibility; alpha transitions satisfy protected Base main ancestry; a moving alpha source is frozen and reconciled before promotion records the exact frozen SHA."
+        - label: "For an upgrade, I reviewed every crossed release's migration and Breaking Changes instructions in ascending version order; for a fresh installation, I verified an empty or replacement environment and target prerequisites."
           required: true
