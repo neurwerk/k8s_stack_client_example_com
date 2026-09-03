@@ -16,3 +16,4 @@ jobs:
     with:
       pull_request_number: ${{ github.event.pull_request.number }}
       status_app_client_id: ${{ vars.PLATFORM_STATUS_APP_CLIENT_ID }}
+    secrets: inherit

@@ -41,3 +41,4 @@ jobs:
     with:
       pull_request_number: ${{ matrix.pull_request_number }}
       status_app_client_id: ${{ vars.PLATFORM_STATUS_APP_CLIENT_ID }}
+    secrets: inherit

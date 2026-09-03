@@ -162,17 +162,18 @@ def manifest(
     tag: str,
     *,
     upgrades_from: list[str],
-    fresh_install: str = "supported",
+    fresh_install: str | None = None,
     downgrade: str = "unsupported",
     recovery: str = "replacement-restore",
     alpha_revisions: list[str] | None = None,
 ) -> str:
     compatibility: dict[str, Any] = {
-        "freshInstall": fresh_install,
         "upgradesFrom": upgrades_from,
         "downgrade": downgrade,
         "recovery": recovery,
     }
+    if fresh_install is not None:
+        compatibility["freshInstall"] = fresh_install
     if alpha_revisions is not None:
         compatibility["upgradesFromAlphaRevisions"] = alpha_revisions
     return yaml.safe_dump(
@@ -199,7 +200,7 @@ def migration(
     downgrade: str = "Unsupported",
     recovery: str = "Replacement restore",
     alpha_revisions: list[str] | None = None,
-    fresh_install: str = "Supported",
+    fresh_install: str | None = None,
 ) -> str:
     old_tags = old_tags or []
     supported = (
@@ -207,8 +208,12 @@ def migration(
     )
     sections = {
         "Support": (
-            f"- Fresh installation: {fresh_install}.\n"
-            f"- Supported source versions: {supported}.\n"
+            (
+                f"- Fresh installation: {fresh_install}.\n"
+                if fresh_install is not None
+                else ""
+            )
+            + f"- Supported source versions: {supported}.\n"
             + (
                 "- Supported alpha source revisions: "
                 + (
@@ -392,7 +397,6 @@ class PlatformCompatibilityTests(unittest.TestCase):
         }
         for name, declaration in cases.items():
             support = (
-                "- Fresh installation: Supported.\n"
                 f"{declaration}\n"
                 "- Downgrade: Unsupported."
             )
@@ -464,12 +468,11 @@ class PlatformCompatibilityTests(unittest.TestCase):
 
     def test_known_downgrade_and_recovery_values_are_normalized(self) -> None:
         support = (
-            "- Fresh installation: Supported.\n"
             "- Supported source versions: None.\n"
             "- Downgrade: Supported."
         )
         self.assertEqual(
-            parse_support_contract(support), ("supported", set(), "supported")
+            parse_support_contract(support), (set(), "supported")
         )
         recovery_values = {
             "Configuration revert": "configuration-revert",
@@ -604,6 +607,18 @@ class PlatformCompatibilityTests(unittest.TestCase):
         with self.assertRaisesRegex(CompatibilityError, "does not support an upgrade"):
             validate_release_contract(*arguments, "upgrade", FINGERPRINT)
         validate_release_contract(*arguments, "fresh-install", FINGERPRINT)
+
+    def test_v010_legacy_fresh_install_contract_remains_valid(self) -> None:
+        validate_release_contract(
+            "v0.1.0",
+            "v0.1.0",
+            manifest("v0.1.0", upgrades_from=[], fresh_install="supported"),
+            migration("v0.1.0", fresh_install="Supported"),
+            release("v0.1.0"),
+            "fresh-install",
+            FINGERPRINT,
+            validate_transition=False,
+        )
 
     def test_downgrade_and_unpublished_release_are_rejected(self) -> None:
         with self.assertRaisesRegex(CompatibilityError, "downgrade"):
@@ -975,7 +990,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 release_fetcher=lambda _tag, _token: release(target),
             )
 
-    def test_fresh_alpha_promotion_requires_fresh_install_support(self) -> None:
+    def test_fresh_alpha_promotion_uses_invariant_support(self) -> None:
         observed = "1" * 40
         target = "v0.3.0"
 
@@ -991,28 +1006,6 @@ class PlatformCompatibilityTests(unittest.TestCase):
                     )
                 )
             return control_plane_file(path)
-
-        with self.assertRaisesRegex(CompatibilityError, "does not support fresh"):
-            run_check(
-                ROOT,
-                "a" * 40,
-                "b" * 40,
-                FINGERPRINT,
-                None,
-                revision_reader=revision_reader,
-                source_ignore_finder=no_source_ignores,
-                base_revision_fetcher=lambda selector, revision: observed,
-                tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
-                    manifest(
-                        target,
-                        upgrades_from=[],
-                        fresh_install="unsupported",
-                    ),
-                    migration(target, fresh_install="Unsupported"),
-                    observed,
-                ),
-                release_fetcher=lambda _tag, _token: release(target),
-            )
 
         result = run_check(
             ROOT,
@@ -1427,7 +1420,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             workflow["jobs"]["evaluate"]["uses"],
             "./.github/workflows/platform-compatibility-evaluate.yaml",
         )
-        self.assertNotIn("secrets", workflow["jobs"]["evaluate"])
+        self.assertEqual(workflow["jobs"]["evaluate"]["secrets"], "inherit")
 
         evaluate_path = ROOT / ".github/workflows/platform-compatibility-evaluate.yaml"
         evaluate = yaml.load(evaluate_path.read_text(), Loader=yaml.BaseLoader)
@@ -1476,7 +1469,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
         )
         self.assertIn("push", refresh["on"])
         self.assertNotIn("workflow_dispatch", refresh["on"])
-        self.assertNotIn("secrets", refresh["jobs"]["evaluate"])
+        self.assertEqual(refresh["jobs"]["evaluate"]["secrets"], "inherit")
 
     def test_all_workflow_actions_are_pinned_to_full_shas(self) -> None:
         for path in (ROOT / ".github/workflows").glob("*.yaml"):

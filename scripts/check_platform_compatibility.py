@@ -639,17 +639,8 @@ def migration_sections(migration: str, tag: str) -> dict[str, str]:
     return sections
 
 
-def parse_support_contract(support: str) -> tuple[str, set[str], str]:
-    """Parse the exact fresh-install, source-version, and downgrade declarations."""
-    fresh_matches = re.findall(
-        r"^- Fresh installation: (Supported|Unsupported)\.$",
-        support,
-        flags=re.MULTILINE,
-    )
-    if len(fresh_matches) != 1:
-        raise CompatibilityError(
-            "migration Support must contain exactly one fresh-install declaration"
-        )
+def parse_support_contract(support: str) -> tuple[set[str], str]:
+    """Parse source-version and downgrade declarations."""
 
     downgrade_matches = re.findall(
         r"^- Downgrade: (.+)\.$", support, flags=re.MULTILINE
@@ -717,7 +708,7 @@ def parse_support_contract(support: str) -> tuple[str, set[str], str]:
         raise CompatibilityError(
             "migration supported source versions contain duplicates"
         )
-    return fresh_matches[0].lower(), set(sources), downgrade
+    return set(sources), downgrade
 
 
 def parse_recovery_contract(recovery: str) -> str:
@@ -821,8 +812,6 @@ def validate_alpha_promotion_contract(
             "upgradesFromAlphaRevisions"
         )
     if target.adoption_mode == "fresh-install":
-        if compatibility.get("freshInstall") != "supported":
-            raise CompatibilityError(f"{tag} does not support fresh installation")
         return
     if not forward:
         return
@@ -909,11 +898,6 @@ def validate_release_contract(
         raise CompatibilityError(
             "manifest compatibility.upgradesFrom contains duplicates"
         )
-    fresh_install = compatibility.get("freshInstall")
-    if fresh_install not in {"supported", "unsupported"}:
-        raise CompatibilityError(
-            "manifest freshInstall must be supported or unsupported"
-        )
     downgrade = compatibility.get("downgrade")
     if downgrade not in set(COMPATIBILITY_DISPLAY_VALUES.values()):
         raise CompatibilityError("manifest downgrade must be supported or unsupported")
@@ -933,14 +917,8 @@ def validate_release_contract(
         raise CompatibilityError("target GitHub Release is not published")
 
     sections = migration_sections(migration, new_tag)
-    migration_fresh_install, migration_sources, migration_downgrade = (
-        parse_support_contract(sections["Support"])
-    )
+    migration_sources, migration_downgrade = parse_support_contract(sections["Support"])
     migration_recovery = parse_recovery_contract(sections["Recovery"])
-    if migration_fresh_install != fresh_install:
-        raise CompatibilityError(
-            "migration fresh-install support disagrees with the manifest"
-        )
     if migration_sources != set(normalized_upgrades_from):
         raise CompatibilityError(
             "migration Supported source versions must exactly equal manifest "
@@ -970,8 +948,6 @@ def validate_release_contract(
     if adoption_mode != "fresh-install":
         known = ", ".join(sorted(ADOPTION_MODES))
         raise CompatibilityError(f"platform adoption mode must be one of: {known}")
-    if fresh_install != "supported":
-        raise CompatibilityError(f"{new_tag} does not support fresh installation")
 
 
 def run_check(

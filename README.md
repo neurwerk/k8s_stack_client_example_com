@@ -17,7 +17,8 @@ Returning from alpha to stable requires first freezing a moving `main` source to
 the exact observed commit and reconciling that commit source. Promotion binds to
 the frozen SHA. A forward upgrade is accepted only when its release manifest
 and migration document declare the same alpha revision set and include that
-SHA. Fresh installation instead requires explicit fresh-install support.
+SHA. Every platform release supports installation into a verified empty or
+replacement environment, but the client must still select `fresh-install` mode.
 
 ## Validate The Repository
 
