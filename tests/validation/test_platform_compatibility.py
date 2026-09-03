@@ -161,17 +161,18 @@ def no_source_ignores(_root: Path, _revision: str) -> list[str]:
 def manifest(
     tag: str,
     *,
-    upgrades_from: list[str],
+    upgrades_from: list[str] | None = None,
+    stable_upgrade: str = "supported",
     fresh_install: str | None = None,
     downgrade: str = "unsupported",
     recovery: str = "replacement-restore",
     alpha_revisions: list[str] | None = None,
 ) -> str:
-    compatibility: dict[str, Any] = {
-        "upgradesFrom": upgrades_from,
-        "downgrade": downgrade,
-        "recovery": recovery,
-    }
+    compatibility: dict[str, Any] = {"downgrade": downgrade, "recovery": recovery}
+    if upgrades_from is None:
+        compatibility["stableUpgrade"] = stable_upgrade
+    else:
+        compatibility["upgradesFrom"] = upgrades_from
     if fresh_install is not None:
         compatibility["freshInstall"] = fresh_install
     if alpha_revisions is not None:
@@ -201,11 +202,16 @@ def migration(
     recovery: str = "Replacement restore",
     alpha_revisions: list[str] | None = None,
     fresh_install: str | None = None,
+    stable_upgrade: str = "Supported",
 ) -> str:
-    old_tags = old_tags or []
-    supported = (
-        ", ".join(f"`{old_tag}`" for old_tag in old_tags) if old_tags else "None"
-    )
+    support = f"- Stable upgrades: {stable_upgrade}.\n"
+    if old_tags is not None:
+        supported = (
+            ", ".join(f"`{old_tag}`" for old_tag in old_tags)
+            if old_tags
+            else "None"
+        )
+        support = f"- Supported source versions: {supported}.\n"
     sections = {
         "Support": (
             (
@@ -213,7 +219,7 @@ def migration(
                 if fresh_install is not None
                 else ""
             )
-            + f"- Supported source versions: {supported}.\n"
+            + support
             + (
                 "- Supported alpha source revisions: "
                 + (
@@ -235,6 +241,8 @@ def migration(
         "Recovery": f"Recovery classification: {recovery}.",
         "Exclusions": "None.",
     }
+    if old_tags is None:
+        sections["Breaking Changes"] = "None."
     body = "\n\n".join(f"## {heading}\n\n{text}" for heading, text in sections.items())
     return f"# Platform {tag}\n\n{body}\n"
 
@@ -319,152 +327,56 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 source("v1.2.3", promoted_from_alpha="abc123"), origin="test"
             )
 
-    def test_explicit_upgrade_path_is_accepted(self) -> None:
-        validate_release_contract(
-            "v0.2.0",
-            "v0.2.1",
-            manifest("v0.2.1", upgrades_from=["v0.2.0"]),
-            migration("v0.2.1", old_tags=["v0.2.0"]),
-            release("v0.2.1"),
-            "upgrade",
-            FINGERPRINT,
-        )
-
-    def test_migration_source_set_must_exactly_equal_manifest(self) -> None:
-        with self.assertRaisesRegex(CompatibilityError, "exactly equal"):
-            validate_release_contract(
-                "v0.2.0",
-                "v0.2.2",
-                manifest("v0.2.2", upgrades_from=["v0.2.0", "v0.2.1"]),
-                migration("v0.2.2", old_tags=["v0.2.0"]),
-                release("v0.2.2"),
-                "upgrade",
-                FINGERPRINT,
-            )
-
-    def test_wrapped_source_versions_are_parsed_and_compared_exactly(self) -> None:
-        sources = ["v0.2.0", "v0.2.1", "v0.2.2", "v0.2.3", "v0.2.4"]
-        migration_text = migration("v0.2.5", old_tags=sources).replace(
-            "- Supported source versions: "
-            "`v0.2.0`, `v0.2.1`, `v0.2.2`, `v0.2.3`, `v0.2.4`.",
-            "- Supported source versions: "
-            "`v0.2.0`, `v0.2.1`, `v0.2.2`, `v0.2.3`,\n  `v0.2.4`.",
-        )
-        validate_release_contract(
-            "v0.2.4",
-            "v0.2.5",
-            manifest(
-                "v0.2.5",
-                upgrades_from=[source.removeprefix("v") for source in sources],
+    def test_stable_upgrade_policies(self) -> None:
+        cases = (
+            (
+                "supported skipped upgrade",
+                "v0.1.1",
+                "v0.1.5",
+                "supported",
+                None,
             ),
-            migration_text,
-            release("v0.2.5"),
-            "upgrade",
-            FINGERPRINT,
+            (
+                "fresh-install-only upgrade",
+                "v0.1.1",
+                "v0.1.5",
+                "fresh-install-only",
+                "fresh installation only",
+            ),
+            (
+                "legacy v0.1.1 unlisted source",
+                "v0.1.0",
+                "v0.1.1",
+                None,
+                "does not support an upgrade",
+            ),
         )
-        with self.assertRaisesRegex(CompatibilityError, "exactly equal"):
-            validate_release_contract(
-                "v0.2.4",
-                "v0.2.5",
-                manifest(
-                    "v0.2.5",
-                    upgrades_from=[source.removeprefix("v") for source in sources[:-1]],
-                ),
+        for name, old_tag, new_tag, policy, error in cases:
+            if policy is None:
+                manifest_text = manifest(new_tag, upgrades_from=[])
+                migration_text = migration(new_tag, old_tags=[])
+            else:
+                manifest_text = manifest(new_tag, stable_upgrade=policy)
+                display = {
+                    "supported": "Supported",
+                    "fresh-install-only": "Fresh installation only",
+                }[policy]
+                migration_text = migration(new_tag, stable_upgrade=display)
+            arguments = (
+                old_tag,
+                new_tag,
+                manifest_text,
                 migration_text,
-                release("v0.2.5"),
+                release(new_tag),
                 "upgrade",
                 FINGERPRINT,
             )
-
-    def test_malformed_source_version_continuations_are_rejected(self) -> None:
-        cases = {
-            "missing comma before wrap": (
-                "- Supported source versions: `v0.2.0`\n  `v0.2.1`."
-            ),
-            "one-space indent": ("- Supported source versions: `v0.2.0`,\n `v0.2.1`."),
-            "three-space indent": (
-                "- Supported source versions: `v0.2.0`,\n   `v0.2.1`."
-            ),
-            "unknown continuation": (
-                "- Supported source versions: `v0.2.0`,\n  and later releases."
-            ),
-            "continuation after period": (
-                "- Supported source versions: `v0.2.0`.\n  `v0.2.1`."
-            ),
-            "missing final period": (
-                "- Supported source versions: `v0.2.0`,\n  `v0.2.1`,"
-            ),
-        }
-        for name, declaration in cases.items():
-            support = (
-                f"{declaration}\n"
-                "- Downgrade: Unsupported."
-            )
-            with (
-                self.subTest(name=name),
-                self.assertRaisesRegex(CompatibilityError, "Supported source versions"),
-            ):
-                parse_support_contract(support)
-
-    def test_legacy_bare_manifest_sources_are_target_bounded(self) -> None:
-        for target, old_tag in (("v0.2.1", "v0.2.0"), ("v0.2.5", "v0.2.4")):
-            with self.subTest(target=target):
-                validate_release_contract(
-                    old_tag,
-                    target,
-                    manifest(target, upgrades_from=[old_tag.removeprefix("v")]),
-                    migration(target, old_tags=[old_tag]),
-                    release(target),
-                    "upgrade",
-                    FINGERPRINT,
-                )
-
-        for target, old_tag in (
-            ("v0.2.0", "v0.1.0"),
-            ("v0.2.6", "v0.2.5"),
-            ("v1.0.0", "v0.2.5"),
-        ):
-            with (
-                self.subTest(target=target),
-                self.assertRaisesRegex(
-                    CompatibilityError, "legacy bare SemVer outside affected targets"
-                ),
-            ):
-                validate_release_contract(
-                    old_tag,
-                    target,
-                    manifest(target, upgrades_from=[old_tag.removeprefix("v")]),
-                    migration(target, old_tags=[old_tag]),
-                    release(target),
-                    "upgrade",
-                    FINGERPRINT,
-                )
-
-    def test_legacy_manifest_normalization_remains_strict_and_unique(self) -> None:
-        for invalid in ("01.2.3", "0.2", "0.2.3-rc.1", ">=0.2.0"):
-            with (
-                self.subTest(value=invalid),
-                self.assertRaisesRegex(CompatibilityError, "exact strict vX.Y.Z"),
-            ):
-                validate_release_contract(
-                    "v0.2.0",
-                    "v0.2.5",
-                    manifest("v0.2.5", upgrades_from=[invalid]),
-                    migration("v0.2.5", old_tags=["v0.2.0"]),
-                    release("v0.2.5"),
-                    "upgrade",
-                    FINGERPRINT,
-                )
-        with self.assertRaisesRegex(CompatibilityError, "contains duplicates"):
-            validate_release_contract(
-                "v0.2.0",
-                "v0.2.2",
-                manifest("v0.2.2", upgrades_from=["0.2.0", "v0.2.0"]),
-                migration("v0.2.2", old_tags=["v0.2.0"]),
-                release("v0.2.2"),
-                "upgrade",
-                FINGERPRINT,
-            )
+            with self.subTest(name=name):
+                if error is None:
+                    validate_release_contract(*arguments)
+                else:
+                    with self.assertRaisesRegex(CompatibilityError, error):
+                        validate_release_contract(*arguments)
 
     def test_known_downgrade_and_recovery_values_are_normalized(self) -> None:
         support = (
@@ -488,7 +400,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 )
 
     def test_downgrade_declaration_is_exact_and_agrees_with_manifest(self) -> None:
-        valid = migration("v0.2.1", old_tags=["v0.2.0"])
+        valid = migration("v0.2.1")
         cases = {
             "missing": (
                 valid.replace("- Downgrade: Unsupported.\n", ""),
@@ -506,7 +418,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 "must be Supported or Unsupported",
             ),
             "mismatch": (
-                migration("v0.2.1", old_tags=["v0.2.0"], downgrade="Supported"),
+                migration("v0.2.1", downgrade="Supported"),
                 "disagrees with the manifest",
             ),
         }
@@ -518,7 +430,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 validate_release_contract(
                     "v0.2.0",
                     "v0.2.1",
-                    manifest("v0.2.1", upgrades_from=["v0.2.0"]),
+                    manifest("v0.2.1"),
                     migration_text,
                     release("v0.2.1"),
                     "upgrade",
@@ -528,7 +440,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             validate_release_contract(
                 "v0.2.0",
                 "v0.2.1",
-                manifest("v0.2.1", upgrades_from=["v0.2.0"], downgrade="conditional"),
+                manifest("v0.2.1", downgrade="conditional"),
                 valid,
                 release("v0.2.1"),
                 "upgrade",
@@ -536,7 +448,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             )
 
     def test_recovery_declaration_is_exact_and_agrees_with_manifest(self) -> None:
-        valid = migration("v0.2.1", old_tags=["v0.2.0"])
+        valid = migration("v0.2.1")
         declaration = "Recovery classification: Replacement restore."
         cases = {
             "missing": (
@@ -554,7 +466,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 "must be one of",
             ),
             "mismatch": (
-                migration("v0.2.1", old_tags=["v0.2.0"], recovery="Forward fix"),
+                migration("v0.2.1", recovery="Forward fix"),
                 "disagrees with the manifest",
             ),
         }
@@ -566,7 +478,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 validate_release_contract(
                     "v0.2.0",
                     "v0.2.1",
-                    manifest("v0.2.1", upgrades_from=["v0.2.0"]),
+                    manifest("v0.2.1"),
                     migration_text,
                     release("v0.2.1"),
                     "upgrade",
@@ -576,21 +488,8 @@ class PlatformCompatibilityTests(unittest.TestCase):
             validate_release_contract(
                 "v0.2.0",
                 "v0.2.1",
-                manifest("v0.2.1", upgrades_from=["v0.2.0"], recovery="snapshot"),
+                manifest("v0.2.1", recovery="snapshot"),
                 valid,
-                release("v0.2.1"),
-                "upgrade",
-                FINGERPRINT,
-            )
-        misleading = migration("v0.2.1").replace(
-            "## Prerequisites", "The prose mentions `v0.2.0`.\n\n## Prerequisites"
-        )
-        with self.assertRaisesRegex(CompatibilityError, "exactly equal"):
-            validate_release_contract(
-                "v0.2.0",
-                "v0.2.1",
-                manifest("v0.2.1", upgrades_from=["v0.2.0"]),
-                misleading,
                 release("v0.2.1"),
                 "upgrade",
                 FINGERPRINT,
@@ -600,11 +499,11 @@ class PlatformCompatibilityTests(unittest.TestCase):
         arguments = (
             "v0.2.0",
             "v0.2.1",
-            manifest("v0.2.1", upgrades_from=[]),
-            migration("v0.2.1"),
+            manifest("v0.2.1", stable_upgrade="fresh-install-only"),
+            migration("v0.2.1", stable_upgrade="Fresh installation only"),
             release("v0.2.1"),
         )
-        with self.assertRaisesRegex(CompatibilityError, "does not support an upgrade"):
+        with self.assertRaisesRegex(CompatibilityError, "fresh installation only"):
             validate_release_contract(*arguments, "upgrade", FINGERPRINT)
         validate_release_contract(*arguments, "fresh-install", FINGERPRINT)
 
@@ -613,7 +512,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             "v0.1.0",
             "v0.1.0",
             manifest("v0.1.0", upgrades_from=[], fresh_install="supported"),
-            migration("v0.1.0", fresh_install="Supported"),
+            migration("v0.1.0", old_tags=[], fresh_install="Supported"),
             release("v0.1.0"),
             "fresh-install",
             FINGERPRINT,
@@ -625,8 +524,8 @@ class PlatformCompatibilityTests(unittest.TestCase):
             validate_release_contract(
                 "v0.2.1",
                 "v0.2.0",
-                manifest("v0.2.0", upgrades_from=["v0.2.1"]),
-                migration("v0.2.0", old_tags=["v0.2.1"]),
+                manifest("v0.2.0"),
+                migration("v0.2.0"),
                 release("v0.2.0"),
                 "upgrade",
                 FINGERPRINT,
@@ -635,33 +534,33 @@ class PlatformCompatibilityTests(unittest.TestCase):
             validate_release_contract(
                 "v0.2.0",
                 "v0.2.1",
-                manifest("v0.2.1", upgrades_from=["v0.2.0"]),
-                migration("v0.2.1", old_tags=["v0.2.0"]),
+                manifest("v0.2.1"),
+                migration("v0.2.1"),
                 release("v0.2.1", draft=True),
                 "upgrade",
                 FINGERPRINT,
             )
 
     def test_manifest_agreement_and_migration_headings_are_required(self) -> None:
-        invalid_manifest = yaml.safe_load(manifest("v0.2.1", upgrades_from=["v0.2.0"]))
+        invalid_manifest = yaml.safe_load(manifest("v0.2.1"))
         invalid_manifest["metadata"]["name"] = "v9.9.9"
         with self.assertRaisesRegex(CompatibilityError, "metadata.name"):
             validate_release_contract(
                 "v0.2.0",
                 "v0.2.1",
                 yaml.safe_dump(invalid_manifest),
-                migration("v0.2.1", old_tags=["v0.2.0"]),
+                migration("v0.2.1"),
                 release("v0.2.1"),
                 "upgrade",
                 FINGERPRINT,
             )
-        with self.assertRaisesRegex(CompatibilityError, "mandatory headings"):
+        with self.assertRaisesRegex(CompatibilityError, "mandatory heading"):
             validate_release_contract(
                 "v0.2.0",
                 "v0.2.1",
-                manifest("v0.2.1", upgrades_from=["v0.2.0"]),
-                migration("v0.2.1", old_tags=["v0.2.0"]).replace(
-                    "## Recovery", "## Missing Recovery"
+                manifest("v0.2.1"),
+                migration("v0.2.1").replace(
+                    "## Breaking Changes", "## Missing Breaking Changes"
                 ),
                 release("v0.2.1"),
                 "upgrade",
@@ -952,7 +851,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             base_revision_fetcher=lambda selector, revision: observed,
             ancestor_checker=lambda *_arguments: self.fail("exact commits need no ancestry"),
             tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
-                manifest(target, upgrades_from=[]), migration(target), observed
+                manifest(target), migration(target), observed
             ),
             release_fetcher=lambda _tag, _token: release(target),
         )
@@ -983,7 +882,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 source_ignore_finder=no_source_ignores,
                 base_revision_fetcher=lambda selector, revision: observed,
                 tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
-                    manifest(target, upgrades_from=[]),
+                    manifest(target),
                     migration(target, downgrade="Supported"),
                     observed,
                 ),
@@ -1017,7 +916,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             source_ignore_finder=no_source_ignores,
             base_revision_fetcher=lambda selector, revision: observed,
             tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
-                manifest(target, upgrades_from=[]), migration(target), observed
+                manifest(target), migration(target), observed
             ),
             release_fetcher=lambda _tag, _token: release(target),
         )
@@ -1051,7 +950,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 FINGERPRINT,
                 None,
                 tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
-                    manifest(target, upgrades_from=[], alpha_revisions=[]),
+                    manifest(target, alpha_revisions=[]),
                     migration(target, alpha_revisions=[]),
                     target_commit,
                 ),
@@ -1069,7 +968,6 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
                     manifest(
                         target,
-                        upgrades_from=[],
                         alpha_revisions=[observed, extra_revision],
                     ),
                     migration(target, alpha_revisions=[observed]),
@@ -1085,7 +983,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
             FINGERPRINT,
             None,
             tag_fetcher=lambda _tag, _fingerprint: VerifiedTag(
-                manifest(target, upgrades_from=[], alpha_revisions=[observed]),
+                manifest(target, alpha_revisions=[observed]),
                 migration(target, alpha_revisions=[observed]),
                 target_commit,
             ),

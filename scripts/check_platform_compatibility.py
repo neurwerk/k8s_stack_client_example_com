@@ -46,7 +46,6 @@ CLUSTER_RESOURCES = [
 ]
 FLUX_RESOURCES = ["gotk-components.yaml", "gotk-sync.yaml"]
 TAG_PATTERN = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
-BARE_SEMVER_PATTERN = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 FINGERPRINT_PATTERN = re.compile(r"^SHA256:[A-Za-z0-9+/]{43}$")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40,64}$")
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -55,7 +54,7 @@ CLIENT_SOURCE_URL_PATTERN = re.compile(
 )
 MAX_REVISION_FILE_BYTES = 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 60
-LEGACY_BARE_UPGRADES_FROM_RANGE = ((0, 2, 1), (0, 2, 5))
+LEGACY_UPGRADES_FROM_TARGETS = {"v0.1.0", "v0.1.1"}
 MANDATORY_MIGRATION_HEADINGS = {
     "Support",
     "Prerequisites",
@@ -75,6 +74,10 @@ RECOVERY_DISPLAY_VALUES = {
     "Forward fix": "forward-fix",
     "Component native restore": "component-native-restore",
     "Replacement restore": "replacement-restore",
+}
+STABLE_UPGRADE_DISPLAY_VALUES = {
+    "Supported": "supported",
+    "Fresh installation only": "fresh-install-only",
 }
 
 
@@ -639,8 +642,8 @@ def migration_sections(migration: str, tag: str) -> dict[str, str]:
     return sections
 
 
-def parse_support_contract(support: str) -> tuple[set[str], str]:
-    """Parse source-version and downgrade declarations."""
+def parse_support_contract(support: str) -> tuple[set[str] | str, str]:
+    """Parse either the legacy source allowlist or the stable upgrade policy."""
 
     downgrade_matches = re.findall(
         r"^- Downgrade: (.+)\.$", support, flags=re.MULTILINE
@@ -656,40 +659,26 @@ def parse_support_contract(support: str) -> tuple[set[str], str]:
             "migration downgrade must be Supported or Unsupported"
         ) from error
 
-    source_prefix = "- Supported source versions: "
-    lines = support.splitlines()
-    source_indexes = [
-        index for index, line in enumerate(lines) if line.startswith(source_prefix)
-    ]
-    if len(source_indexes) != 1:
+    stable_matches = re.findall(
+        r"^- Stable upgrades: (.+)\.$", support, flags=re.MULTILINE
+    )
+    source_matches = re.findall(
+        r"^- Supported source versions: (.+)\.$", support, flags=re.MULTILINE
+    )
+    if len(stable_matches) + len(source_matches) != 1:
         raise CompatibilityError(
-            "migration Support must contain exactly one Supported source versions "
-            "declaration"
+            "migration Support must contain exactly one Stable upgrades or legacy "
+            "Supported source versions declaration"
         )
-    index = source_indexes[0]
-    segments = [lines[index].removeprefix(source_prefix)]
-    while not segments[-1].endswith("."):
-        if not segments[-1].endswith(","):
+    if stable_matches:
+        try:
+            return STABLE_UPGRADE_DISPLAY_VALUES[stable_matches[0]], downgrade
+        except KeyError as error:
             raise CompatibilityError(
-                "Supported source versions wrapped lines must end in a comma or "
-                "final period"
-            )
-        index += 1
-        if index >= len(lines) or not lines[index].startswith("  "):
-            raise CompatibilityError(
-                "Supported source versions continuation must use exactly two spaces"
-            )
-        continuation = lines[index][2:]
-        if not continuation or continuation[0].isspace():
-            raise CompatibilityError(
-                "Supported source versions continuation must use exactly two spaces"
-            )
-        segments.append(continuation)
-    if index + 1 < len(lines) and lines[index + 1].startswith((" ", "\t")):
-        raise CompatibilityError(
-            "Supported source versions has a continuation after its final period"
-        )
-    declaration = " ".join(segments)[:-1]
+                "migration stable upgrades must be Supported or Fresh installation only"
+            ) from error
+
+    declaration = source_matches[0]
     if declaration == "None":
         sources: list[str] = []
     else:
@@ -871,33 +860,34 @@ def validate_release_contract(
             "fingerprint"
         )
 
-    upgrades_from = compatibility.get("upgradesFrom")
-    if not isinstance(upgrades_from, list) or not all(
-        isinstance(version, str) for version in upgrades_from
-    ):
-        raise CompatibilityError(
-            "manifest compatibility.upgradesFrom must be a list of tags"
-        )
-    normalized_upgrades_from: list[str] = []
-    for index, version in enumerate(upgrades_from):
-        if TAG_PATTERN.fullmatch(version) is not None:
-            normalized = version
-        elif BARE_SEMVER_PATTERN.fullmatch(version) is not None:
-            minimum, maximum = LEGACY_BARE_UPGRADES_FROM_RANGE
-            if not minimum <= new_version <= maximum:
-                raise CompatibilityError(
-                    f"manifest upgradesFrom[{index}] uses legacy bare SemVer outside "
-                    "affected targets v0.2.1 through v0.2.5; exact vX.Y.Z is required"
-                )
-            normalized = f"v{version}"
-        else:
+    legacy = "upgradesFrom" in compatibility
+    if legacy:
+        if new_tag not in LEGACY_UPGRADES_FROM_TARGETS:
+            raise CompatibilityError(
+                "manifest compatibility.upgradesFrom is legacy and allowed only for "
+                "published targets v0.1.0 and v0.1.1"
+            )
+        if "stableUpgrade" in compatibility:
+            raise CompatibilityError(
+                "manifest compatibility must not combine upgradesFrom and stableUpgrade"
+            )
+        upgrades_from = compatibility["upgradesFrom"]
+        if not isinstance(upgrades_from, list) or not all(
+            isinstance(version, str) for version in upgrades_from
+        ):
+            raise CompatibilityError(
+                "manifest compatibility.upgradesFrom must be a list of tags"
+            )
+        for index, version in enumerate(upgrades_from):
             parse_tag(version, field=f"manifest upgradesFrom[{index}]")
-            normalized = version
-        normalized_upgrades_from.append(normalized)
-    if len(normalized_upgrades_from) != len(set(normalized_upgrades_from)):
-        raise CompatibilityError(
-            "manifest compatibility.upgradesFrom contains duplicates"
-        )
+        supported_sources = set(upgrades_from)
+    else:
+        stable_upgrade = compatibility.get("stableUpgrade")
+        if stable_upgrade not in set(STABLE_UPGRADE_DISPLAY_VALUES.values()):
+            raise CompatibilityError(
+                "manifest compatibility.stableUpgrade must be supported or "
+                "fresh-install-only"
+            )
     downgrade = compatibility.get("downgrade")
     if downgrade not in set(COMPATIBILITY_DISPLAY_VALUES.values()):
         raise CompatibilityError("manifest downgrade must be supported or unsupported")
@@ -917,13 +907,25 @@ def validate_release_contract(
         raise CompatibilityError("target GitHub Release is not published")
 
     sections = migration_sections(migration, new_tag)
-    migration_sources, migration_downgrade = parse_support_contract(sections["Support"])
-    migration_recovery = parse_recovery_contract(sections["Recovery"])
-    if migration_sources != set(normalized_upgrades_from):
+    if not legacy and "Breaking Changes" not in sections:
         raise CompatibilityError(
-            "migration Supported source versions must exactly equal manifest "
-            "upgradesFrom"
+            "migration is missing mandatory heading: Breaking Changes"
         )
+    migration_stable_support, migration_downgrade = parse_support_contract(
+        sections["Support"]
+    )
+    migration_recovery = parse_recovery_contract(sections["Recovery"])
+    if legacy:
+        if migration_stable_support != supported_sources:
+            raise CompatibilityError(
+                "migration Supported source versions must exactly equal manifest "
+                "upgradesFrom"
+            )
+    else:
+        if migration_stable_support != stable_upgrade:
+            raise CompatibilityError(
+                "migration Stable upgrades must agree with manifest stableUpgrade"
+            )
     if migration_downgrade != downgrade:
         raise CompatibilityError(
             "migration downgrade support disagrees with the manifest"
@@ -940,9 +942,13 @@ def validate_release_contract(
     if not validate_transition:
         return
     if adoption_mode == "upgrade":
-        if old_tag not in normalized_upgrades_from:
+        if legacy and old_tag not in supported_sources:
             raise CompatibilityError(
                 f"{new_tag} does not support an upgrade from {old_tag}"
+            )
+        if not legacy and stable_upgrade != "supported":
+            raise CompatibilityError(
+                f"{new_tag} supports fresh installation only, not stable upgrades"
             )
         return
     if adoption_mode != "fresh-install":

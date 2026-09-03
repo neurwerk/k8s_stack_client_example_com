@@ -19,7 +19,8 @@ Describe the intended change to the Example client configuration and why it is n
 - [ ] Stable uses one exact signed tag and release trust; alpha uses Base `main` or a full commit SHA with Flux `HEAD` verification and alpha trust.
 - [ ] I reviewed the applicable release or alpha ancestry evidence.
 - [ ] Maintainer review covers the exact source transition; merging that reviewed commit is the adoption authorization.
-- [ ] A moving alpha branch is frozen and reconciled before stable promotion; a forward upgrade records the frozen SHA and both release compatibility declarations use the same set and list it.
+- [ ] For stable upgrades, I reviewed every crossed release's migration and Breaking Changes instructions in ascending version order; fresh installations instead include empty or replacement environment evidence and target prerequisites.
+- [ ] A moving alpha branch is frozen and reconciled before stable promotion, which records the exact frozen SHA.
 
 Compatibility or fresh-install evidence:
 
