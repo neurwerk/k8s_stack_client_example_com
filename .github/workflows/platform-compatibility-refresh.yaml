@@ -21,10 +21,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           matrix="$(
             gh api --paginate --slurp \
-              "repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100" \
-              --jq '[.[][] | {pull_request_number: .number}]' | jq -c .
+              "repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100" |
+              jq -c '[.[][] | {pull_request_number: .number}]'
           )"
           printf 'count=%s\n' "$(jq 'length' <<<"$matrix")" >> "$GITHUB_OUTPUT"
           printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
