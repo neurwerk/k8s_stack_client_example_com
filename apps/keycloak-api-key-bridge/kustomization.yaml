@@ -10,3 +10,6 @@ configMapGenerator:
   - name: keycloak-api-key-bridge-product-values
     files:
       - values.yaml=values.yaml
+  - name: client-openrouter-catalog-values
+    files:
+      - values.yaml=../../config/openrouter-catalog.yaml

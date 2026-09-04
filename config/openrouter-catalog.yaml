@@ -1,0 +1,91 @@
+openrouterCatalog:
+  enabled: true
+  excludedModels: []
+  grantToAccessGroups: true
+  models:
+  - name: remote/openrouter/aion-labs/aion-2.0
+    upstreamModel: aion-labs/aion-2.0
+    label: Aion-2.0
+    group: Remote-OpenRouter-AionLabs
+  - name: remote/openrouter/aion-labs/aion-3.0
+    upstreamModel: aion-labs/aion-3.0
+    label: Aion-3.0
+    group: Remote-OpenRouter-AionLabs
+  - name: remote/openrouter/aion-labs/aion-3.0-mini
+    upstreamModel: aion-labs/aion-3.0-mini
+    label: Aion-3.0-Mini
+    group: Remote-OpenRouter-AionLabs
+  - name: remote/openrouter/aion-labs/aion-rp-llama-3.1-8b
+    upstreamModel: aion-labs/aion-rp-llama-3.1-8b
+    label: Aion-RP 1.0 (8B)
+    group: Remote-OpenRouter-AionLabs
+  - name: remote/openrouter/amazon/nova-2-lite-v1
+    upstreamModel: amazon/nova-2-lite-v1
+    label: Nova 2 Lite
+    group: Remote-OpenRouter-Amazon
+  - name: remote/openrouter/amazon/nova-lite-v1
+    upstreamModel: amazon/nova-lite-v1
+    label: Nova Lite 1.0
+    group: Remote-OpenRouter-Amazon
+  - name: remote/openrouter/amazon/nova-micro-v1
+    upstreamModel: amazon/nova-micro-v1
+    label: Nova Micro 1.0
+    group: Remote-OpenRouter-Amazon
+  - name: remote/openrouter/amazon/nova-premier-v1
+    upstreamModel: amazon/nova-premier-v1
+    label: Nova Premier 1.0
+    group: Remote-OpenRouter-Amazon
+  - name: remote/openrouter/amazon/nova-pro-v1
+    upstreamModel: amazon/nova-pro-v1
+    label: Nova Pro 1.0
+    group: Remote-OpenRouter-Amazon
+  - name: remote/openrouter/anthracite-org/magnum-v4-72b
+    upstreamModel: anthracite-org/magnum-v4-72b
+    label: Magnum v4 72B
+    group: Remote-OpenRouter-Anthracite Org
+  - name: remote/openrouter/anthropic/claude-3-haiku
+    upstreamModel: anthropic/claude-3-haiku
+    label: Claude 3 Haiku
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-fable-5
+    upstreamModel: anthropic/claude-fable-5
+    label: Claude Fable 5
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-fable-5.1
+    upstreamModel: anthropic/claude-fable-5.1
+    label: Claude Fable 5.1
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-haiku-4.5
+    upstreamModel: anthropic/claude-haiku-4.5
+    label: Claude Haiku 4.5
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-opus-4
+    upstreamModel: anthropic/claude-opus-4
+    label: Claude Opus 4
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-opus-4.1
+    upstreamModel: anthropic/claude-opus-4.1
+    label: Claude Opus 4.1
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-opus-4.5
+    upstreamModel: anthropic/claude-opus-4.5
+    label: Claude Opus 4.5
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-opus-4.6
+    upstreamModel: anthropic/claude-opus-4.6
+    label: Claude Opus 4.6
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-opus-4.7
+    upstreamModel: anthropic/claude-opus-4.7
+    label: Claude Opus 4.7
+    group: Remote-OpenRouter-Anthropic
+  - name: remote/openrouter/anthropic/claude-opus-4.8
+    upstreamModel: anthropic/claude-opus-4.8
+    label: Claude Opus 4.8
+    group: Remote-OpenRouter-Anthropic
+infraAgentgatewayWrapper:
+  modelCatalog:
+    sources:
+    - configMap:
+        name: client-model-cost-catalog
+        key: catalog.json

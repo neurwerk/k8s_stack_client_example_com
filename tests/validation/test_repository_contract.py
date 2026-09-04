@@ -95,19 +95,6 @@ def nested(values: dict[str, Any], *path: str) -> Any:
     return current
 
 
-def assignment_target(kustomization_path: Path, generator: dict[str, Any]) -> Path:
-    """Resolve a ConfigMap generator's single values.yaml file assignment."""
-    files = generator.get("files")
-    if not isinstance(files, list) or len(files) != 1:
-        raise AssertionError(f"{kustomization_path}: expected one generated file")
-    key, separator, source = files[0].partition("=")
-    if key != "values.yaml" or separator != "=":
-        raise AssertionError(
-            f"{kustomization_path}: ConfigMap key must be values.yaml"
-        )
-    return (kustomization_path.parent / source).resolve()
-
-
 def is_public_host(host: str) -> bool:
     """Distinguish Internet hosts from cluster-local and loopback URLs."""
     if host == "localhost" or host.endswith((".cluster.local", ".svc")):
@@ -134,6 +121,41 @@ class RepositoryContractTests(unittest.TestCase):
             for root in (ROOT / "apps", ROOT / "infrastructure")
             for path in root.glob("**/values.yaml")
         }
+        additional_generators = {
+            Path("apps/keycloak/kustomization.yaml"): {
+                "client-openrouter-catalog-values": (
+                    "values.yaml",
+                    ROOT / "config/openrouter-catalog.yaml",
+                ),
+            },
+            Path("apps/keycloak-api-key-bridge/kustomization.yaml"): {
+                "client-openrouter-catalog-values": (
+                    "values.yaml",
+                    ROOT / "config/openrouter-catalog.yaml",
+                ),
+            },
+            Path("apps/librechat/core/kustomization.yaml"): {
+                "client-openrouter-catalog-values": (
+                    "values.yaml",
+                    ROOT / "config/openrouter-catalog.yaml",
+                ),
+                "librechat-agentgateway-model-values": (
+                    "values.yaml",
+                    ROOT / "infrastructure/networking/agentgateway/values.yaml",
+                ),
+            },
+            Path("infrastructure/networking/agentgateway/kustomization.yaml"): {
+                "client-openrouter-catalog-values": (
+                    "values.yaml",
+                    ROOT / "config/openrouter-catalog.yaml",
+                ),
+                "client-model-cost-catalog": (
+                    "catalog.json",
+                    ROOT
+                    / "infrastructure/networking/agentgateway/model-pricing.json",
+                ),
+            },
+        }
         leaves = 0
 
         for root in (ROOT / "apps", ROOT / "infrastructure"):
@@ -153,27 +175,47 @@ class RepositoryContractTests(unittest.TestCase):
                         ),
                         True,
                     )
-                    names = [generator["name"] for generator in generators]
-                    self.assertEqual(len(names), len(set(names)))
-                    by_name = {generator["name"]: generator for generator in generators}
-                    self.assertIn("client-values", by_name)
-                    self.assertEqual(
-                        assignment_target(path, by_name["client-values"]),
-                        (ROOT / "config/client.yaml").resolve(),
-                    )
-
-                    products = [
-                        generator
-                        for generator in generators
-                        if generator["name"].endswith("-product-values")
+                    targets = [
+                        candidate
+                        for candidate in product_values
+                        if path.parent == candidate.parent
+                        or path.parent.is_relative_to(candidate.parent)
                     ]
-                    self.assertEqual(len(products), 1)
-                    target = assignment_target(path, products[0])
-                    self.assertIn(target, product_values)
-                    self.assertEqual(
-                        products[0]["name"], f"{target.parent.name}-product-values"
-                    )
+                    self.assertEqual(len(targets), 1)
+                    target = targets[0]
+                    product_name = f"{target.parent.name}-product-values"
                     generated_product_values.add(target)
+
+                    actual = {}
+                    for generator in generators:
+                        self.assertEqual(set(generator), {"name", "files"})
+                        files = generator["files"]
+                        self.assertIsInstance(files, list)
+                        self.assertEqual(len(files), 1)
+                        key, separator, source = files[0].partition("=")
+                        self.assertEqual(separator, "=")
+                        actual[generator["name"]] = (
+                            key,
+                            (path.parent / source).resolve(),
+                        )
+                    self.assertEqual(len(actual), len(generators))
+
+                    expected = {
+                        "client-values": (
+                            "values.yaml",
+                            (ROOT / "config/client.yaml").resolve(),
+                        ),
+                        product_name: ("values.yaml", target),
+                    }
+                    expected.update(
+                        {
+                            name: (key, source.resolve())
+                            for name, (key, source) in additional_generators.get(
+                                relative_path, {}
+                            ).items()
+                        }
+                    )
+                    self.assertEqual(actual, expected)
 
         self.assertGreater(leaves, 0)
         self.assertEqual(generated_product_values, product_values)
