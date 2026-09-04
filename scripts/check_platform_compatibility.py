@@ -55,6 +55,7 @@ CLIENT_SOURCE_URL_PATTERN = re.compile(
 MAX_REVISION_FILE_BYTES = 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 60
 LEGACY_UPGRADES_FROM_TARGETS = {"v0.1.0", "v0.1.1"}
+UNPUBLISHED_SOURCE_CORRECTIONS = {("v0.2.6", "v0.1.1")}
 MANDATORY_MIGRATION_HEADINGS = {
     "Support",
     "Prerequisites",
@@ -83,6 +84,10 @@ STABLE_UPGRADE_DISPLAY_VALUES = {
 
 class CompatibilityError(RuntimeError):
     """A platform transition failed a required review gate."""
+
+
+class ReleaseNotFoundError(CompatibilityError):
+    """A platform tag has no published GitHub Release."""
 
 
 @dataclass(frozen=True)
@@ -608,6 +613,10 @@ def fetch_release(tag: str, token: str | None) -> dict[str, Any]:
         with urlopen(request, timeout=20) as response:  # noqa: S310 - fixed GitHub API
             payload = json.load(response)
     except HTTPError as error:
+        if error.code == 404:
+            raise ReleaseNotFoundError(
+                f"GitHub Release lookup for {tag} failed with HTTP 404"
+            ) from error
         raise CompatibilityError(
             f"GitHub Release lookup for {tag} failed with HTTP {error.code}"
         ) from error
@@ -1107,9 +1116,15 @@ def run_check(
                 f"{PROMOTED_FROM_ALPHA_ANNOTATION} is valid only for alpha-to-stable "
                 "transitions"
             )
+        correction = (
+            (old_source.revision, new_source.revision)
+            in UNPUBLISHED_SOURCE_CORRECTIONS
+            and old_source.adoption_mode == "fresh-install"
+            and new_source.adoption_mode == "fresh-install"
+        )
         if parse_tag(new_source.revision, field="proposed platform pin") < parse_tag(
             old_source.revision, field="base platform pin"
-        ):
+        ) and not correction:
             raise CompatibilityError(
                 "platform downgrade is prohibited: "
                 f"{old_source.revision} -> {new_source.revision}"
@@ -1123,6 +1138,16 @@ def run_check(
                 changed=True,
                 verified=False,
             )
+        if correction:
+            try:
+                release_fetcher(old_source.revision, github_token)
+            except ReleaseNotFoundError:
+                pass
+            else:
+                raise CompatibilityError(
+                    "platform source correction requires the previous release to be "
+                    "unpublished"
+                )
         verified_tag = tag_fetcher(new_source.revision, expected_fingerprint)
         release = release_fetcher(new_source.revision, github_token)
         validate_release_contract(
@@ -1133,6 +1158,7 @@ def run_check(
             release,
             new_source.adoption_mode or "",
             expected_fingerprint,
+            validate_transition=not correction,
         )
         return CheckResult(
             old_source,
