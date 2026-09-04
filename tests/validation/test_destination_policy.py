@@ -13,7 +13,6 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 OPENROUTER_MODELS = {
-    "remote/openrouter/ox-alpha": "stealth/ox-alpha",
     "remote/openrouter/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash-0731",
     "remote/openrouter/mimo-v2.5": "xiaomi/mimo-v2.5",
     "remote/openrouter/hy3": "tencent/hy3",

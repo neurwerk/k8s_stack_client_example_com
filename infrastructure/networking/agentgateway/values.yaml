@@ -29,18 +29,14 @@ infraAgentgatewayWrapper:
 guardrails:
   llmPolicyEngine:
     localTarget:
-      name: local/llama3.2-3b
+      name: llama-cpp
       model: llama3.2:3b
+      provider: Custom
+      custom:
+        formats:
+          - type: Completions
     models:
       # OpenRouter leaderboard models, all rerouted locally on PII.
-      - name: remote/openrouter/ox-alpha
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: stealth/ox-alpha
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
       - name: remote/openrouter/deepseek-v4-flash-0731
         piiEnabled: true
         contentTracingEnabled: true
