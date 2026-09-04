@@ -21,6 +21,7 @@ from scripts.check_platform_compatibility import (
     PLATFORM_SOURCE_PATH,
     CompatibilityError,
     PlatformSource,
+    ReleaseNotFoundError,
     VerifiedTag,
     fetch_pull_request_refs,
     parse_platform_source,
@@ -634,6 +635,101 @@ class PlatformCompatibilityTests(unittest.TestCase):
         self.assertEqual(revisions, ["a" * 40, "b" * 40])
         self.assertTrue(result.changed)
         self.assertFalse(result.verified)
+
+    def test_classifies_the_exact_unpublished_source_correction_offline(self) -> None:
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                tag = "v0.2.6" if revision == "a" * 40 else "v0.1.1"
+                return source(tag, adoption_mode="fresh-install")
+            return control_plane_file(path)
+
+        result = run_check(
+            ROOT,
+            "a" * 40,
+            "b" * 40,
+            FINGERPRINT,
+            None,
+            classify_only=True,
+            revision_reader=revision_reader,
+            source_ignore_finder=no_source_ignores,
+            tag_fetcher=lambda *_arguments: self.fail("classification fetched a tag"),
+            release_fetcher=lambda *_arguments: self.fail(
+                "classification fetched a release"
+            ),
+        )
+
+        self.assertTrue(result.changed)
+        self.assertFalse(result.verified)
+
+    def test_verifies_the_exact_unpublished_source_correction(self) -> None:
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                tag = "v0.2.6" if revision == "a" * 40 else "v0.1.1"
+                return source(tag, adoption_mode="fresh-install")
+            return control_plane_file(path)
+
+        fetched_releases: list[str] = []
+
+        def release_fetcher(tag: str, _token: str | None) -> dict[str, Any]:
+            fetched_releases.append(tag)
+            if tag == "v0.2.6":
+                raise ReleaseNotFoundError("not published")
+            return release(tag)
+
+        result = run_check(
+            ROOT,
+            "a" * 40,
+            "b" * 40,
+            FINGERPRINT,
+            None,
+            revision_reader=revision_reader,
+            source_ignore_finder=no_source_ignores,
+            tag_fetcher=lambda tag, _fingerprint: VerifiedTag(
+                manifest(tag, upgrades_from=[]),
+                migration(tag, old_tags=[]),
+                "c" * 40,
+            ),
+            release_fetcher=release_fetcher,
+        )
+
+        self.assertTrue(result.verified)
+        self.assertEqual(fetched_releases, ["v0.2.6", "v0.1.1"])
+
+    def test_unpublished_source_correction_remains_fail_closed(self) -> None:
+        def revision_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                tag = "v0.2.6" if revision == "a" * 40 else "v0.1.1"
+                return source(tag, adoption_mode="fresh-install")
+            return control_plane_file(path)
+
+        with self.assertRaisesRegex(CompatibilityError, "previous release.*unpublished"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                revision_reader=revision_reader,
+                source_ignore_finder=no_source_ignores,
+                release_fetcher=lambda tag, _token: release(tag),
+            )
+
+        def wrong_target_reader(_root: Path, revision: str, path: Path) -> str:
+            if path == PLATFORM_SOURCE_PATH:
+                tag = "v0.2.6" if revision == "a" * 40 else "v0.1.0"
+                return source(tag, adoption_mode="fresh-install")
+            return control_plane_file(path)
+
+        with self.assertRaisesRegex(CompatibilityError, "downgrade"):
+            run_check(
+                ROOT,
+                "a" * 40,
+                "b" * 40,
+                FINGERPRINT,
+                None,
+                revision_reader=wrong_target_reader,
+                source_ignore_finder=no_source_ignores,
+            )
 
     def test_stable_to_alpha_requires_main_at_or_ahead_of_stable(self) -> None:
         base_sha = "a" * 40
