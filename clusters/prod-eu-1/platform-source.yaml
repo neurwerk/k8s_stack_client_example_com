@@ -3,14 +3,14 @@ kind: GitRepository
 metadata:
   annotations:
     platform.neurwerk.com/adoption-mode: fresh-install
-    platform.neurwerk.com/adoption-target: v0.2.6
+    platform.neurwerk.com/adoption-target: v0.1.1
   name: k8s-stack
   namespace: flux-system
 spec:
   interval: 30s
   url: https://github.com/neurwerk/k8s_stack_base.git
   ref:
-    tag: v0.2.6
+    tag: v0.1.1
   verify:
     mode: Tag
     secretRef:
