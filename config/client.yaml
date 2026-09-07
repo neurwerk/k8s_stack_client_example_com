@@ -3,6 +3,9 @@
 publicCertificates:
   useProduction: false
 
+canonicalEndpointRouting:
+  mode: public-dns
+
 #
 # ── Resource sizing + replica counts for all charts ───────────────────────────
 # This follows base/releases/shared/resources.yaml with client-specific overrides.
