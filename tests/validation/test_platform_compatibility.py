@@ -403,10 +403,6 @@ class PlatformCompatibilityTests(unittest.TestCase):
     def test_downgrade_declaration_is_exact_and_agrees_with_manifest(self) -> None:
         valid = migration("v0.2.1")
         cases = {
-            "missing": (
-                valid.replace("- Downgrade: Unsupported.\n", ""),
-                "exactly one downgrade",
-            ),
             "duplicate": (
                 valid.replace(
                     "- Downgrade: Unsupported.",
@@ -452,10 +448,6 @@ class PlatformCompatibilityTests(unittest.TestCase):
         valid = migration("v0.2.1")
         declaration = "Recovery classification: Replacement restore."
         cases = {
-            "missing": (
-                valid.replace(declaration, "No recovery classification declared."),
-                "exactly one recovery classification",
-            ),
             "duplicate": (
                 valid.replace(declaration, f"{declaration}\n{declaration}"),
                 "exactly one recovery classification",
@@ -542,7 +534,7 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 FINGERPRINT,
             )
 
-    def test_manifest_agreement_and_migration_headings_are_required(self) -> None:
+    def test_manifest_required_but_migration_notes_optional(self) -> None:
         invalid_manifest = yaml.safe_load(manifest("v0.2.1"))
         invalid_manifest["metadata"]["name"] = "v9.9.9"
         with self.assertRaisesRegex(CompatibilityError, "metadata.name"):
@@ -555,14 +547,12 @@ class PlatformCompatibilityTests(unittest.TestCase):
                 "upgrade",
                 FINGERPRINT,
             )
-        with self.assertRaisesRegex(CompatibilityError, "mandatory heading"):
+        for notes in ("", "Plain notes.", "## Support\n", "- Downgrade: Unsupported.\n", "## Breaking Changes\n"):
             validate_release_contract(
                 "v0.2.0",
                 "v0.2.1",
                 manifest("v0.2.1"),
-                migration("v0.2.1").replace(
-                    "## Breaking Changes", "## Missing Breaking Changes"
-                ),
+                notes,
                 release("v0.2.1"),
                 "upgrade",
                 FINGERPRINT,
