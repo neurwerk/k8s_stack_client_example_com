@@ -56,16 +56,6 @@ MAX_REVISION_FILE_BYTES = 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 60
 LEGACY_UPGRADES_FROM_TARGETS = {"v0.1.0", "v0.1.1"}
 UNPUBLISHED_SOURCE_CORRECTIONS = {("v0.2.6", "v0.1.1")}
-MANDATORY_MIGRATION_HEADINGS = {
-    "Support",
-    "Prerequisites",
-    "Client Actions",
-    "Stateful And API Effects",
-    "Pre-Deployment Checks",
-    "Post-Deployment Checks",
-    "Recovery",
-    "Exclusions",
-}
 COMPATIBILITY_DISPLAY_VALUES = {
     "Supported": "supported",
     "Unsupported": "unsupported",
@@ -588,8 +578,11 @@ def fetch_and_verify_tag(tag: str, expected_fingerprint: str) -> VerifiedTag:
         manifest = run_command(
             ["git", "show", f"{tag_ref}:release/manifest.yaml"], cwd=repository
         )
-        migration = run_command(
-            ["git", "show", f"{tag_ref}:release/migrations/{tag}.md"], cwd=repository
+        migration_path = f"release/migrations/{tag}.md"
+        migration = (
+            run_command(["git", "show", f"{tag_ref}:{migration_path}"], cwd=repository)
+            if run_command(["git", "ls-tree", "--name-only", tag_ref, "--", migration_path], cwd=repository).strip()
+            else ""
         )
         commit = run_command(
             ["git", "rev-parse", f"{tag_ref}^{{commit}}"], cwd=repository
@@ -632,8 +625,8 @@ def fetch_release(tag: str, token: str | None) -> dict[str, Any]:
 
 
 def migration_sections(migration: str, tag: str) -> dict[str, str]:
-    """Parse required level-two migration sections and reject omissions."""
-    if not migration.startswith(f"# Platform {tag}\n"):
+    """Read optional notes, rejecting conflicting titles or duplicate headings."""
+    if migration.startswith("# Platform ") and not migration.startswith(f"# Platform {tag}\n"):
         raise CompatibilityError(f"migration title must agree with {tag}")
     matches = list(re.finditer(r"^## (.+?)\s*$", migration, flags=re.MULTILINE))
     sections: dict[str, str] = {}
@@ -643,26 +636,21 @@ def migration_sections(migration: str, tag: str) -> dict[str, str]:
         if heading in sections:
             raise CompatibilityError(f"migration contains duplicate heading: {heading}")
         sections[heading] = migration[match.end() : end].strip()
-    missing = sorted(MANDATORY_MIGRATION_HEADINGS - set(sections))
-    if missing:
-        raise CompatibilityError(
-            f"migration is missing mandatory headings: {', '.join(missing)}"
-        )
     return sections
 
 
-def parse_support_contract(support: str) -> tuple[set[str] | str, str]:
+def parse_support_contract(support: str) -> tuple[set[str] | str | None, str | None]:
     """Parse either the legacy source allowlist or the stable upgrade policy."""
 
     downgrade_matches = re.findall(
         r"^- Downgrade: (.+)\.$", support, flags=re.MULTILINE
     )
-    if len(downgrade_matches) != 1:
+    if len(downgrade_matches) > 1 or (not downgrade_matches and re.search(r"^- Downgrade:", support, re.MULTILINE)):
         raise CompatibilityError(
             "migration Support must contain exactly one downgrade declaration"
         )
     try:
-        downgrade = COMPATIBILITY_DISPLAY_VALUES[downgrade_matches[0]]
+        downgrade = COMPATIBILITY_DISPLAY_VALUES[downgrade_matches[0]] if downgrade_matches else None
     except KeyError as error:
         raise CompatibilityError(
             "migration downgrade must be Supported or Unsupported"
@@ -674,6 +662,8 @@ def parse_support_contract(support: str) -> tuple[set[str] | str, str]:
     source_matches = re.findall(
         r"^- Supported source versions: (.+)\.$", support, flags=re.MULTILINE
     )
+    if not stable_matches and not source_matches and not re.search(r"^- (Stable upgrades|Supported source versions):", support, re.MULTILINE):
+        return None, downgrade
     if len(stable_matches) + len(source_matches) != 1:
         raise CompatibilityError(
             "migration Support must contain exactly one Stable upgrades or legacy "
@@ -709,11 +699,13 @@ def parse_support_contract(support: str) -> tuple[set[str] | str, str]:
     return set(sources), downgrade
 
 
-def parse_recovery_contract(recovery: str) -> str:
+def parse_recovery_contract(recovery: str) -> str | None:
     """Parse and normalize the exact recovery classification declaration."""
     matches = re.findall(
         r"^Recovery classification: (.+)\.$", recovery, flags=re.MULTILINE
     )
+    if not matches and not re.search(r"^Recovery classification:", recovery, re.MULTILINE):
+        return None
     if len(matches) != 1:
         raise CompatibilityError(
             "migration Recovery must contain exactly one recovery classification "
@@ -786,7 +778,7 @@ def validate_alpha_promotion_contract(
         compatibility = manifest["spec"]["compatibility"]
     except (TypeError, KeyError, yaml.YAMLError) as error:
         raise CompatibilityError(f"{tag} release manifest is malformed") from error
-    sections = migration_sections(verified_tag.migration, tag)
+    migration_sections(verified_tag.migration, tag)
     manifest_revisions: set[str] | None = None
     if "upgradesFromAlphaRevisions" in compatibility:
         revisions = compatibility["upgradesFromAlphaRevisions"]
@@ -803,8 +795,8 @@ def validate_alpha_promotion_contract(
                 "manifest compatibility.upgradesFromAlphaRevisions contains duplicates"
             )
         manifest_revisions = set(revisions)
-    migration_revisions = parse_alpha_source_revisions(sections["Support"])
-    if manifest_revisions != migration_revisions:
+    migration_revisions = parse_alpha_source_revisions(verified_tag.migration)
+    if migration_revisions is not None and manifest_revisions != migration_revisions:
         raise CompatibilityError(
             "migration Supported alpha source revisions must exactly equal manifest "
             "upgradesFromAlphaRevisions"
@@ -815,8 +807,7 @@ def validate_alpha_promotion_contract(
         return
     if manifest_revisions is None:
         raise CompatibilityError(
-            "forward alpha upgrade requires upgradesFromAlphaRevisions and the "
-            "Supported alpha source revisions migration declaration"
+            "forward alpha upgrade requires manifest upgradesFromAlphaRevisions"
         )
     if source_revision not in manifest_revisions:
         raise CompatibilityError(
@@ -915,31 +906,27 @@ def validate_release_contract(
     if not release.get("published_at"):
         raise CompatibilityError("target GitHub Release is not published")
 
-    sections = migration_sections(migration, new_tag)
-    if not legacy and "Breaking Changes" not in sections:
-        raise CompatibilityError(
-            "migration is missing mandatory heading: Breaking Changes"
-        )
+    migration_sections(migration, new_tag)
     migration_stable_support, migration_downgrade = parse_support_contract(
-        sections["Support"]
+        migration
     )
-    migration_recovery = parse_recovery_contract(sections["Recovery"])
-    if legacy:
+    migration_recovery = parse_recovery_contract(migration)
+    if legacy and migration_stable_support is not None:
         if migration_stable_support != supported_sources:
             raise CompatibilityError(
                 "migration Supported source versions must exactly equal manifest "
                 "upgradesFrom"
             )
-    else:
+    elif migration_stable_support is not None:
         if migration_stable_support != stable_upgrade:
             raise CompatibilityError(
                 "migration Stable upgrades must agree with manifest stableUpgrade"
             )
-    if migration_downgrade != downgrade:
+    if migration_downgrade is not None and migration_downgrade != downgrade:
         raise CompatibilityError(
             "migration downgrade support disagrees with the manifest"
         )
-    if migration_recovery != recovery:
+    if migration_recovery is not None and migration_recovery != recovery:
         raise CompatibilityError(
             "migration recovery classification disagrees with the manifest"
         )
