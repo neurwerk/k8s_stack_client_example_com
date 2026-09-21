@@ -1,58 +1,21 @@
 name: Platform source adoption
-description: Propose a reviewed stable or alpha platform source transition.
-title: "[Platform source]: "
+description: Propose a platform version or source change
 body:
-  - type: markdown
-    attributes:
-      value: Stable adoption requires signed release evidence. Alpha adoption requires reviewed Base main ancestry and separate HEAD trust. Channel selection is independent of environment. Opening this issue does not authorize deployment.
   - type: input
-    id: current-version
+    id: target
     attributes:
-      label: Current channel and selector
+      label: Target version or source
       placeholder: stable tag:vX.Y.Z, alpha branch:main, or alpha commit:SHA
     validations:
       required: true
-  - type: input
-    id: target-version
+  - type: textarea
+    id: reason
     attributes:
-      label: Target channel and selector
-      placeholder: stable tag:vX.Y.Z, alpha branch:main, or alpha commit:SHA
-    validations:
-      required: true
-  - type: dropdown
-    id: target-state
-    attributes:
-      label: Target state
-      options:
-        - Existing installation with retained state
-        - Operator-attested empty target eligible for fresh installation
-        - Unknown - adoption must remain blocked
+      label: Why this change?
     validations:
       required: true
   - type: textarea
-    id: evidence
+    id: related
     attributes:
-      label: Source and compatibility evidence
-      description: Summarize signed release checks or Base main ancestry, plus any alpha promotion SHA, migration actions, prerequisites, and recovery classification.
-    validations:
-      required: true
-  - type: textarea
-    id: rollout
-    attributes:
-      label: Pre/post checks and staged rollout
-      description: Include client-value ordering and non-secret checks. Do not include deployment credentials or claim that this issue authorizes reconciliation.
-    validations:
-      required: true
-  - type: checkboxes
-    id: gates
-    attributes:
-      label: Adoption gates
-      options:
-        - label: The target uses the canonical stable or alpha source shape.
-          required: true
-        - label: I reviewed stateful, CRD, API, secret-reference, and resource-identity effects.
-          required: true
-        - label: "Maintainer review covers the exact source transition; merging that reviewed commit is the adoption authorization."
-          required: true
-        - label: "For an upgrade, I reviewed every crossed release's migration and Breaking Changes instructions in ascending version order; for a fresh installation, I verified an empty or replacement environment and target prerequisites."
-          required: true
+      label: Supporting links (optional)
+      description: Link the release or related work. Compatibility and rollout evidence belongs in adoption review.
