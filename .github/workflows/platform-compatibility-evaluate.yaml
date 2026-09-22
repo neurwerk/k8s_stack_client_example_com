@@ -111,6 +111,25 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Read trusted validation revision
+        id: validation
+        run: |
+          revision="$(python3 "$GITHUB_WORKSPACE/scripts/validation_revision.py")"
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted validation
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          repository: neurwerk/k8s_stack_base
+          ref: ${{ steps.validation.outputs.revision }}
+          path: .ci/validation
+          persist-credentials: false
+
+      - name: Verify validation revision
+        env:
+          VALIDATION_REVISION: ${{ steps.validation.outputs.revision }}
+        run: test "$(git -C "$GITHUB_WORKSPACE/.ci/validation" rev-parse HEAD)" = "$VALIDATION_REVISION"
+
       - name: Create status-only GitHub App token
         id: status_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -126,7 +145,7 @@ jobs:
           PLATFORM_STATUS_TOKEN: ${{ steps.status_token.outputs.token }}
           MERGE_SHA: ${{ steps.resolve.outputs.merge_sha }}
         run: >-
-          python3 scripts/publish_platform_status.py
+          python3 "$GITHUB_WORKSPACE/.ci/validation/scripts/publish_platform_status.py"
           --sha "$MERGE_SHA"
           --state pending
           --run-id "$GITHUB_RUN_ID"
@@ -149,7 +168,8 @@ jobs:
           PR_NUMBER: ${{ inputs.pull_request_number }}
           PLATFORM_RELEASE_SIGNER_FINGERPRINT: ${{ vars.PLATFORM_RELEASE_SIGNER_FINGERPRINT }}
         run: >-
-          uv run --frozen python scripts/check_platform_compatibility.py
+          uv run --frozen python "$GITHUB_WORKSPACE/.ci/validation/scripts/check_platform_compatibility.py"
+          --root "$GITHUB_WORKSPACE" --allow-alpha
           --base-sha "$BASE_SHA"
           --head-sha "$HEAD_SHA"
           --merge-sha "$MERGE_SHA"
@@ -238,6 +258,25 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Read trusted validation revision
+        id: validation
+        run: |
+          revision="$(python3 "$GITHUB_WORKSPACE/scripts/validation_revision.py")"
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted validation
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          repository: neurwerk/k8s_stack_base
+          ref: ${{ steps.validation.outputs.revision }}
+          path: .ci/validation
+          persist-credentials: false
+
+      - name: Verify validation revision
+        env:
+          VALIDATION_REVISION: ${{ steps.validation.outputs.revision }}
+        run: test "$(git -C "$GITHUB_WORKSPACE/.ci/validation" rev-parse HEAD)" = "$VALIDATION_REVISION"
+
       - name: Set up uv without a privileged cache
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -257,7 +296,8 @@ jobs:
           PLATFORM_RELEASE_SIGNER_FINGERPRINT: ${{ vars.PLATFORM_RELEASE_SIGNER_FINGERPRINT }}
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
-          uv run --frozen python scripts/check_platform_compatibility.py
+          uv run --frozen python "$GITHUB_WORKSPACE/.ci/validation/scripts/check_platform_compatibility.py"
+          --root "$GITHUB_WORKSPACE" --allow-alpha
           --base-sha "$BASE_SHA"
           --head-sha "$HEAD_SHA"
           --merge-sha "$MERGE_SHA"
@@ -279,6 +319,25 @@ jobs:
           ref: ${{ needs.classify.outputs.base_sha }}
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Read trusted validation revision
+        id: validation
+        run: |
+          revision="$(python3 "$GITHUB_WORKSPACE/scripts/validation_revision.py")"
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout trusted validation
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          repository: neurwerk/k8s_stack_base
+          ref: ${{ steps.validation.outputs.revision }}
+          path: .ci/validation
+          persist-credentials: false
+
+      - name: Verify validation revision
+        env:
+          VALIDATION_REVISION: ${{ steps.validation.outputs.revision }}
+        run: test "$(git -C "$GITHUB_WORKSPACE/.ci/validation" rev-parse HEAD)" = "$VALIDATION_REVISION"
 
       - name: Check tuple freshness and job results
         id: result
@@ -345,7 +404,7 @@ jobs:
           PLATFORM_STATUS_TOKEN: ${{ steps.status_token.outputs.token }}
           STATUS_STATE: ${{ steps.result.outputs.state }}
         run: >-
-          python3 scripts/publish_platform_status.py
+          python3 "$GITHUB_WORKSPACE/.ci/validation/scripts/publish_platform_status.py"
           --sha "$MERGE_SHA"
           --state "$STATUS_STATE"
           --run-id "$GITHUB_RUN_ID"

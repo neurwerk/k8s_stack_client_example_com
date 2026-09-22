@@ -18,7 +18,9 @@ YELLOW := \033[33m
 CYAN   := \033[36m
 RESET  := \033[0m
 
-.PHONY: help tools yaml-lint kustomize-validate contract-check platform-compatibility check pre-commit-install
+VALIDATION_ROOT = $(or $(VALIDATION_WORKTREE),$(CURDIR)/.ci/validation)
+
+.PHONY: help tools yaml-lint kustomize-validate contract-check validation-check platform-compatibility check pre-commit-install
 
 help: ## Show this help
 	@printf "$(CYAN)Available targets:$(RESET)\n"
@@ -85,16 +87,26 @@ kustomize-validate: ## Build and validate all client Kustomizations
 	$(KUBECONFORM) -strict -summary -ignore-missing-schemas "$$output"; \
 	printf "$(GREEN)All Kustomizations passed validation.$(RESET)\n"
 
-contract-check: ## Verify client values and Flux composition contracts
+contract-check: ## Run focused client security and authorization checks
 	@if [ -z "$(UV)" ]; then printf "$(RED)uv is required$(RESET)\n"; exit 1; fi
 	@$(UV) run --frozen python -m unittest discover -s tests/validation -p 'test_*.py'
 
-platform-compatibility: ## Verify a changed platform source against Base
+validation-check: ## Verify the shared validation checkout
+	@pin=$$(python3 scripts/validation_revision.py); \
+	if [ -z "$(VALIDATION_WORKTREE)" ]; then \
+		test "$$(git -C "$(VALIDATION_ROOT)" rev-parse HEAD)" = "$$pin" || { printf 'Validation checkout does not match pin.\n' >&2; exit 1; }; \
+	else printf 'Using explicit validation candidate override, not pinned validation.\n'; fi; \
+	for script in check_platform_compatibility publish_platform_status; do \
+		test -f "$(VALIDATION_ROOT)/scripts/$$script.py" || { printf 'Missing shared validation script: %s\n' "$$script" >&2; exit 1; }; \
+	done
+
+platform-compatibility: validation-check ## Verify a changed platform source against Base
 	@if [ -z "$(UV)" ]; then printf "$(RED)uv is required$(RESET)\n"; exit 1; fi
 	@if [ -z "$(BASE_SHA)" ]; then printf "$(RED)BASE_SHA is required$(RESET)\n"; exit 1; fi
 	@if [ -z "$(HEAD_SHA)" ]; then printf "$(RED)HEAD_SHA is required$(RESET)\n"; exit 1; fi
 	@if [ -n "$(PR_NUMBER)" ] && [ -z "$(MERGE_SHA)" ]; then printf "$(RED)MERGE_SHA is required with PR_NUMBER$(RESET)\n"; exit 1; fi
-	@$(UV) run --frozen python scripts/check_platform_compatibility.py \
+	@$(UV) run --frozen python "$(VALIDATION_ROOT)/scripts/check_platform_compatibility.py" \
+		--root "$(CURDIR)" --allow-alpha \
 		--base-sha "$(BASE_SHA)" --head-sha "$(HEAD_SHA)" \
 		$(if $(PR_NUMBER),--pull-request-number "$(PR_NUMBER)" --merge-sha "$(MERGE_SHA)",)
 
