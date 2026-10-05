@@ -1,7 +1,0 @@
-# Client-specific overrides for Dify
-frontendDify:
-  config:
-    AUTO_SETUP_ADMIN_EMAIL: "breakglass@dify.example.com"
-  defaultModel:
-    name: remote/openrouter/deepseek-v4-flash
-    contextSize: "65536"
