@@ -6,16 +6,7 @@ publicCertificates:
 canonicalEndpointRouting:
   mode: public-dns
 
-#
-# ── Resource sizing + replica counts for all charts ───────────────────────────
-# This follows base/releases/shared/resources.yaml with client-specific overrides.
-# Modify for your deployment; keep structure aligned with base.
-#
-# NOTE: Charts with hardcoded replicas (currently keycloak):
-#   - authKeycloak.keycloak: replicas: 1 (hardcoded)
-# To make these configurable, add a .Values reference in the StatefulSet/Deployment template.
 # ── auth-keycloak ──────────────────────────────────────────────────────────
-# NOTE: The Keycloak StatefulSet has replicas: 1 HARDCODED
 authKeycloak:
   hostname: "auth.example.com"
   librechatRedirectUri: "https://chat.example.com/oauth/openid/callback"
