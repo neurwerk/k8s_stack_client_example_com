@@ -28,6 +28,27 @@ From this repository:
 make check
 ```
 
+## Flux Bootstrap Defaults
+
+This reference client is the shared bootstrap template. Source-controller's
+`/tmp` uses `emptyDir: {medium: Memory, sizeLimit: 256Mi}` by default. The cap
+is a limit, not a reservation; usage counts toward its existing `1Gi` container
+memory limit. A full scratch volume can fail reconciliation. Its `/data` artifact
+cache remains disk-backed.
+
+Regenerate the controller bundle with the Flux CLI and the shared defaults:
+
+```bash
+make flux-components
+```
+
+This exports the version recorded in `gotk-components.yaml` without contacting a
+cluster, then applies the default before replacing the file. An unexpected
+source-controller volume or mount layout fails without replacing the bundle.
+Use this target after a bootstrap refresh instead of maintaining a per-client
+patch. Review regenerated changes through the normal trusted compatibility check;
+controller upgrades still require their own review.
+
 ## Proxmox CPU Prerequisite
 
 Before installing or bootstrapping K3s for a deployment based on this example,

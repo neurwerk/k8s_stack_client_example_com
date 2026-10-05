@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import yaml
+
+from scripts.flux_bootstrap_defaults import apply_defaults
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -65,6 +69,56 @@ def walk_values(
 
 
 class RepositoryContractTests(unittest.TestCase):
+    def test_flux_export_changes_only_the_source_scratch_volume(self) -> None:
+        expected = (
+            ROOT / "clusters/prod-eu-1/flux-system/gotk-components.yaml"
+        ).read_text(encoding="utf-8").replace("--log-level=info", "--log-level=error")
+        exported = expected.replace(
+            "      - emptyDir:\n          medium: Memory\n          sizeLimit: 256Mi\n"
+            "        name: tmp",
+            "      - emptyDir: {}\n        name: tmp",
+        )
+        self.assertNotEqual(exported, expected)
+        self.assertEqual(apply_defaults(exported), expected)
+        self.assertEqual(apply_defaults(expected), expected)
+
+    def test_flux_export_rejects_unexpected_source_layouts(self) -> None:
+        content = (
+            ROOT / "clusters/prod-eu-1/flux-system/gotk-components.yaml"
+        ).read_text(encoding="utf-8")
+        source = next(
+            document for document in content.split("\n---\n")
+            if "kind: Deployment\n" in document
+            and "  name: source-controller\n" in document
+        )
+        for changed in (
+            "",
+            source + "\n---\n" + source,
+            source.replace("apiVersion: apps/v1", "apiVersion: apps/v2"),
+            source.replace("namespace: flux-system", "namespace: other"),
+            source.replace("name: source-controller", "name: other"),
+            source.replace("mountPath: /tmp", "mountPath: /scratch"),
+            source.replace("name: tmp", "name: scratch"),
+            source.replace("sizeLimit: 256Mi", "sizeLimit: 512Mi"),
+            source.replace("name: tmp\n", "name: tmp\n          subPath: nested\n", 1),
+            source.replace("volumes:\n", "volumes:\n      - emptyDir: {}\n        name: tmp\n"),
+            source.replace("emptyDir:\n", "emptyDir: &scratch\n"),
+        ):
+            with self.subTest(changed=changed):
+                with self.assertRaises((ValueError, yaml.YAMLError)):
+                    apply_defaults(content.replace(source, changed))
+
+    def test_flux_default_filter_emits_nothing_on_invalid_export(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/flux_bootstrap_defaults.py")],
+            input="apiVersion: v1\nkind: Namespace\nmetadata: {name: flux-system}\n",
+            text=True,
+            capture_output=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("source-controller /tmp", result.stderr)
+
     def test_client_does_not_own_secrets_or_platform_releases(self) -> None:
         forbidden = {
             "ClusterExternalSecret",
