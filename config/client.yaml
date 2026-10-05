@@ -6,16 +6,6 @@ publicCertificates:
 canonicalEndpointRouting:
   mode: public-dns
 
-#
-# ── Resource sizing + replica counts for all charts ───────────────────────────
-# This follows base/releases/shared/resources.yaml with client-specific overrides.
-# Modify for your deployment; keep structure aligned with base.
-#
-# NOTE: Charts with hardcoded replicas (currently keycloak):
-#   - authKeycloak.keycloak: replicas: 1 (hardcoded)
-# To make these configurable, add a .Values reference in the StatefulSet/Deployment template.
-# ── auth-keycloak ──────────────────────────────────────────────────────────
-# NOTE: The Keycloak StatefulSet has replicas: 1 HARDCODED
 authKeycloak:
   hostname: "auth.example.com"
   librechatRedirectUri: "https://chat.example.com/oauth/openid/callback"
@@ -157,8 +147,6 @@ authKeycloak:
       limits:
         cpu: 1000m
         memory: 1Gi
-# ── auth-keycloak-api-key-bridge ───────────────────────────────────────────
-# NOTE: replicas is HARDCODED at 1 in templates/deployment.yaml → not configurable
 authKeycloakApiKeyBridge:
   hostname: "api-keys.example.com"
   resources:
@@ -188,12 +176,6 @@ frontendStudio:
     keycloakServerUrl: "http://auth-keycloak-keycloak-service.auth-keycloak.svc.cluster.local"
     keycloakRealm: "example"
     keycloakClientId: "studio"
-# ── monitor-langfuse (subchart) ────────────────────────────────────────────
-# Subchart fields:
-#   langfuse.replicas: 1          (global — falls back to both web + worker)
-#   langfuse.web.replicas: null   (overrides global for web, if set)
-#   langfuse.worker.replicas: null (overrides global for worker, if set)
-#   clickhouse.replicaCount: 1    (set to 1 for single-node, default in subchart is 3)
 monitorLangfuseWrapper:
   hostname: "monitor.example.com"
   otelCollector:
@@ -233,8 +215,7 @@ mcp:
   servers: []
 guardrails:
   llmPolicyEngine:
-    enabled: true # enable extProc AgentgatewayPolicy + virtual model
-# ── Shared PII Engine entity policy ──────────────────────────────────────────
+    enabled: true
 monitorPiiEngine:
   policy:
     routing:
@@ -248,7 +229,6 @@ monitorPiiEngine:
       defaultAction: block
       # Trusted local reroutes can receive the original PII.
       maskOnReroute: false
-      # ── Entity policy — one entry per entity type ──────────────────────────
       entityPolicies:
         - {entityType: SENSITIVE_TEXT, action: reversible_replace}
         - {entityType: PERSON_NAME, action: reversible_replace}
@@ -294,8 +274,6 @@ monitorPiiEngine:
             - |-
               (?i)(my|the|your|his|her|our|their)\s+(password|passwd|secret|passcode|pin|token)\s+(is|was|=|:)\s+\S{4,}
         - {entityType: IP_ADDRESS, action: pass}
-# ── agentgateway (subchart) ─────────────────────────────────────────────────
-# Subchart field: controller.replicaCount: 1
 agentgateway:
   controller:
     replicaCount: 1
