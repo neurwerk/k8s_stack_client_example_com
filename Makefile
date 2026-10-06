@@ -19,8 +19,9 @@ CYAN   := \033[36m
 RESET  := \033[0m
 
 VALIDATION_ROOT = $(or $(VALIDATION_WORKTREE),$(CURDIR)/.ci/validation)
+FLUX_COMPONENTS := clusters/prod-eu-1/flux-system/gotk-components.yaml
 
-.PHONY: help tools yaml-lint kustomize-validate contract-check validation-check platform-compatibility check pre-commit-install
+.PHONY: help tools yaml-lint kustomize-validate contract-check validation-check platform-compatibility check flux-components pre-commit-install
 
 help: ## Show this help
 	@printf "$(CYAN)Available targets:$(RESET)\n"
@@ -111,6 +112,16 @@ platform-compatibility: validation-check ## Verify a changed platform source aga
 		$(if $(PR_NUMBER),--pull-request-number "$(PR_NUMBER)" --merge-sha "$(MERGE_SHA)",)
 
 check: tools yaml-lint kustomize-validate contract-check ## Run all validation checks
+
+flux-components: ## Regenerate the pinned Flux bundle with shared bootstrap defaults
+	@version=$$(sed -n 's/^# Flux Version: //p' "$(FLUX_COMPONENTS)"); \
+	test -n "$$version" || { printf 'Missing Flux version header.\n' >&2; exit 1; }; \
+	tmp=$$(mktemp "$(FLUX_COMPONENTS).XXXXXX"); \
+	trap 'rm -f "$$tmp"' EXIT; \
+	flux install --export --version="$$version" --namespace=flux-system \
+		--components=source-controller,kustomize-controller,helm-controller,notification-controller \
+		| $(UV) run --frozen python scripts/flux_bootstrap_defaults.py > "$$tmp"; \
+	cat "$$tmp" > "$(FLUX_COMPONENTS)"
 
 pre-commit-install: ## Install pre-commit hooks
 	@if [ -n "$(PRECOMMIT)" ]; then \
