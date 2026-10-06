@@ -18,16 +18,11 @@ authKeycloak:
   studioWebOrigin: "https://studio.example.com"
   keycloakApiKeyBridgeRedirectUri: ""
   keycloakApiKeyBridgeWebOrigin: ""
-  difyRedirectUri: "https://dify.example.com/console/api/oauth/authorize/keycloak"
-  difyWebOrigin: "https://dify.example.com"
   realm: example
   agentgatewayClientId: agentgateway
   keycloakApiKeyBridgeClientId: keycloak-api-key-bridge
   librechatClientId: librechat
   studioClientId: studio
-  difyAgentgatewayClientRoles:
-    - llm:invoke
-    - model:remote/openrouter/deepseek-v4-flash:invoke
   agentgatewayClientRoles:
     - llm:invoke
     - model:remote/openrouter/deepseek-v4-flash-0731:invoke
@@ -165,8 +160,6 @@ frontendLibrechat:
   hostname: "chat.example.com"
   adminPanel:
     hostname: "chat-admin.example.com"
-frontendDify:
-  hostname: "dify.example.com"
 frontendStudio:
   studio:
     hostname: "studio.example.com"

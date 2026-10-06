@@ -60,9 +60,6 @@ class DestinationPolicyTests(unittest.TestCase):
         allowed.update(f'mcp:{server["name"]}:invoke' for server in self.servers)
         permission_sets = {
             "agentgatewayClientRoles": auth.get("agentgatewayClientRoles", []),
-            "difyAgentgatewayClientRoles": auth.get(
-                "difyAgentgatewayClientRoles", []
-            ),
             **auth.get("agentgatewayAccessGroups", {}),
         }
 
@@ -71,11 +68,6 @@ class DestinationPolicyTests(unittest.TestCase):
                 self.assertTrue(all(isinstance(item, str) for item in permissions))
                 self.assertEqual(len(permissions), len(set(permissions)))
                 self.assertLessEqual(set(permissions), allowed)
-
-        dify_roles = set(auth.get("difyAgentgatewayClientRoles", []))
-        default = load_yaml("apps/dify/values.yaml")["frontendDify"]["defaultModel"]
-        self.assertIn("llm:invoke", dify_roles)
-        self.assertIn(f"model:{default['name']}:invoke", dify_roles)
 
     def test_privacy_reroutes_have_a_local_fallback(self) -> None:
         rerouted = [model for model in self.models if model.get("piiReroute") is True]
