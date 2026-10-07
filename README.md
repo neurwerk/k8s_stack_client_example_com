@@ -1,74 +1,30 @@
-# client_example_com
+# neurwerk.base - Example Client Chart
 
-Reference client values and Flux composition for an example production cluster.
-The client repository supplies non-secret values and cluster composition; the
-[`k8s_stack_base`](https://github.com/neurwerk/k8s_stack_base) repository
-supplies signed platform releases and charts.
+The example client chart provides reference client configuration and Flux deployment setup for neurwerk.base. See the [neurwerk.base website](https://base.neurwerk.com/) for more information.
 
-## Platform Channels
+| Repository | Description |
+| --- | --- |
+| [Base chart](https://github.com/neurwerk/k8s_stack_base) | Shared platform charts and release packages that form the foundation of the stack. |
+| [Studio](https://github.com/neurwerk/k8s_stack_studio) | Web dashboard and API for operating AI platform services. |
+| [Tooling](https://github.com/neurwerk/k8s_stack_tooling) | One container image plus separate CLI tools for setup and operations. |
+| [PII Engine](https://github.com/neurwerk/k8s_stack_pii_engine) | Service that uses Presidio to evaluate PII and apply safety policies. |
+| [AgentGateway External Processor](https://github.com/neurwerk/k8s_stack_agentgateway_extproc) | Adapter that processes gateway requests and responses with the PII Engine. |
+| [Keycloak API Key Bridge](https://github.com/neurwerk/k8s_stack_keycloak_api_key_bridge) | Separate service that issues and validates API keys using Keycloak permissions. |
+| [Keycloak Theme](https://github.com/neurwerk/k8s_stack_keycloak_theme) | Customized Keycloak login pages and emails. |
+|  |  |
+| [Example client chart](https://github.com/neurwerk/k8s_stack_client_example_com) | Reference client configuration and Flux deployment setup to adapt for a new client (**this repo**). |
+|  |  |
+| [Dify Add-on](https://github.com/neurwerk/k8s_stack_addon_dify) | Optional Dify package with API and web customizations, including single-workspace enforcement. |
 
-The committed example selects the stable channel with one exact signed release
-tag. A reviewed source change may instead opt into the alpha channel using Base
-`main` or one full commit SHA. Both alpha selectors use Flux `HEAD` verification
-with the separate alpha trust root. Channel selection is independent of the
-cluster environment.
+## Contributing and support
 
-Returning from alpha to stable requires first freezing a moving `main` source to
-the exact observed commit and reconciling that commit source. Promotion binds to
-the frozen SHA. A forward upgrade is accepted only when its release manifest
-and migration document declare the same alpha revision set and include that
-SHA. Every platform release supports installation into a verified empty or
-replacement environment, but the client must still select `fresh-install` mode.
+- **Contributions:** Read [CONTRIBUTING.md](.github/CONTRIBUTING.md) before proposing a change.
+- **Bug reports and feature requests:** Use [GitHub Issues](https://github.com/neurwerk/k8s_stack_client_example_com/issues) for reproducible bugs and clearly scoped feature requests.
 
-## Validate The Repository
+## Security
 
-From this repository:
+Report vulnerabilities privately by following the instructions in [SECURITY.md](SECURITY.md).
 
-```bash
-make check
-```
+## Licensing
 
-## Flux Bootstrap Defaults
-
-This reference client is the shared bootstrap template. Source-controller's
-`/tmp` uses `emptyDir: {medium: Memory, sizeLimit: 256Mi}` by default. The cap
-is a limit, not a reservation; usage counts toward its existing `1Gi` container
-memory limit. A full scratch volume can fail reconciliation. Its `/data` artifact
-cache remains disk-backed.
-
-Regenerate the controller bundle with the Flux CLI and the shared defaults:
-
-```bash
-make flux-components
-```
-
-This exports the version recorded in `gotk-components.yaml` without contacting a
-cluster, then applies the default before replacing the file. An unexpected
-source-controller volume or mount layout fails without replacing the bundle.
-Use this target after a bootstrap refresh instead of maintaining a per-client
-patch. Review regenerated changes through the normal trusted compatibility check;
-controller upgrades still require their own review.
-
-## Proxmox CPU Prerequisite
-
-Before installing or bootstrapping K3s for a deployment based on this example,
-configure the VM CPU type as `x86-64-v3` (recommended) or `host`. The upstream
-DocumentDB gateway for amd64 is compiled for the complete `x86-64-v3` baseline
-and exits with `Illegal instruction` when Proxmox exposes only `kvm64`,
-`x86-64-v2`, or `x86-64-v2-AES`. A physical CPU that supports AVX2 does not help
-when the virtual CPU model masks those flags.
-
-Apply a CPU type change with a complete VM shutdown and start, not an in-guest
-restart. Every possible live-migration target must support the selected model.
-`x86-64-v4` and `host` are compatible, but neither is required by the platform
-and both reduce migration compatibility compared with `x86-64-v3`. See the
-[Proxmox CPU type documentation](https://pve.proxmox.com/pve-docs/chapter-qm.html#qm_cpu).
-
-After starting the VM, inspect the CPU flags:
-
-```bash
-grep -m1 '^flags' /proc/cpuinfo
-```
-
-Continue only when the flags include `avx`, `avx2`, `bmi1`, `bmi2`, `f16c`,
-`fma`, `abm`, `movbe`, and `xsave`.
+Project-owned content is licensed under the [MIT License](LICENSE). Third-party content retains its upstream license.
