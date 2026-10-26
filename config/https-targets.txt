@@ -1,0 +1,2 @@
+# Configured OpenRouter models; no optional add-on services are selected.
+openrouter.ai /api/v1/models
