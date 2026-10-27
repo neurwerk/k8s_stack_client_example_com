@@ -7,6 +7,5 @@ resources:
   - namespaces.yaml
   - client-values.yaml
   - infrastructure.yaml
-  - addon-bootstrap.yaml
   - applications.yaml
   - flux-system
