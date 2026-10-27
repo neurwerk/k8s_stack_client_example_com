@@ -674,8 +674,8 @@ idna==3.20 \
     # via
     #   requests
     #   yarl
-k8s-stack-tooling @ https://github.com/neurwerk/k8s_stack_tooling/releases/download/v0.14.0/k8s_stack_tooling-0.14.0-py3-none-any.whl#sha256=47a617496104f30fc911cf00bff7f28bdd5bfc0e7bac017d97ce0035ef0716ca \
-    --hash=sha256:47a617496104f30fc911cf00bff7f28bdd5bfc0e7bac017d97ce0035ef0716ca
+k8s-stack-tooling @ https://github.com/neurwerk/k8s_stack_tooling/releases/download/v0.15.0/k8s_stack_tooling-0.15.0-py3-none-any.whl#sha256=2bb115aaf126391f8a201963005e733136b72c10c7cd9543b33fb0136f6628a2 \
+    --hash=sha256:2bb115aaf126391f8a201963005e733136b72c10c7cd9543b33fb0136f6628a2
 kubernetes==36.0.3 \
     --hash=sha256:36993ed25ce59b789c9341473a228fcf268504a2fec7c2b2b1531d73072e5ce7 \
     --hash=sha256:8fde9241c4b298e6374a069dcf728359b4e72c2fb29489a975ba4e1c047cf10f
