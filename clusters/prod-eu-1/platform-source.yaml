@@ -2,16 +2,15 @@ apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
   annotations:
-    platform.neurwerk.com/adoption-mode: fresh-install
-    platform.neurwerk.com/adoption-target: v0.1.1
+    platform.neurwerk.com/channel: alpha
   name: k8s-stack
   namespace: flux-system
 spec:
   interval: 30s
   url: https://github.com/neurwerk/k8s_stack_base.git
   ref:
-    tag: v0.1.1
+    commit: 920e0b712dd2a1d2861c230973418fd90320ebb0
   verify:
-    mode: Tag
+    mode: HEAD
     secretRef:
-      name: k8s-stack-release-trust
+      name: k8s-stack-alpha-trust

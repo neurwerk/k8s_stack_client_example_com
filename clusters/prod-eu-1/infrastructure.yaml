@@ -1,11 +1,59 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: external-secrets-controller
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./releases/external-secrets
+  timeout: 15m
+  prune: true
+  wait: true
+  dependsOn: [{name: namespaces}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: infrastructure
   namespace: flux-system
 spec:
   interval: 1h
   path: ./releases/infrastructure
+  # The early controller stage owns this HelmRelease; never own it twice.
+  patches:
+    # This example selects the same provider through releases/infrastructure.
+    - target:
+        group: helm.toolkit.fluxcd.io
+        kind: HelmRelease
+        name: postgres-operations
+        namespace: infra-postgres-operations
+      patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: postgres-operations
+          namespace: infra-postgres-operations
+        spec:
+          values:
+            postgresOperations:
+              service:
+                postgresqlPort: 5432
+                documentdbPort: 10260
+              containerPorts:
+                postgresql: 9712
+                documentdb: 10260
+    - target:
+        kind: HelmRelease
+        name: external-secrets
+        namespace: infra-external-secrets
+      patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: external-secrets
+          namespace: infra-external-secrets
+        $patch: delete
   timeout: 60m
   wait: true
   healthCheckExprs:
@@ -16,6 +64,7 @@ spec:
       current: 'status.conditions.exists(e, e.type == ''Programmed'' && e.observedGeneration == metadata.generation && e.status == ''True'') && status.listeners.size() == spec.listeners.size() && status.listeners.all(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''True''))'
   prune: true
   dependsOn:
+    - name: external-secrets-controller
     - name: namespaces
     - name: client-infrastructure-values
   sourceRef:

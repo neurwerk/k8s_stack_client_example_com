@@ -1,0 +1,8 @@
+[
+  {"package_name": "k8s-stack-studio-api", "repository": "neurwerk/k8s_stack_studio"},
+  {"package_name": "k8s-stack-studio-web", "repository": "neurwerk/k8s_stack_studio"},
+  {"package_name": "k8s-stack-agentgateway-extproc", "repository": "neurwerk/k8s_stack_agentgateway_extproc"},
+  {"package_name": "k8s-stack-pii-engine", "repository": "neurwerk/k8s_stack_pii_engine", "stable_tags_only": true},
+  {"package_name": "k8s-stack-keycloak-api-key-bridge", "repository": "neurwerk/k8s_stack_keycloak_api_key_bridge"},
+  {"package_name": "k8s-stack-tooling", "repository": "neurwerk/k8s_stack_tooling"}
+]

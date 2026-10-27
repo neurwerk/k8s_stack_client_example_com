@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - cluster-identity.yaml
   - platform-source.yaml
+  - addon-selection.yaml
   - namespaces.yaml
   - client-values.yaml
   - infrastructure.yaml

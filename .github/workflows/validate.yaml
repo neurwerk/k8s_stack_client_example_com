@@ -53,3 +53,22 @@ jobs:
 
       - name: Run full validation once
         run: make check
+
+      - name: Install reviewed composition validator
+        run: |
+          # Use actual published SDK artifacts and hash-locked dependencies.
+          test -s config/tooling-requirements.txt || {
+            echo 'Published Tooling dependency lock is required for composition CI.' >&2
+            exit 1
+          }
+          uv venv --python 3.12 .ci/tooling
+          uv pip sync --python .ci/tooling/bin/python --require-hashes config/tooling-requirements.txt
+
+      - name: Acquire every selected source
+        run: make addons-acquire TOOLING_PYTHON=.ci/tooling/bin/python
+
+      - name: Validate complete installable composition
+        run: make addons-check TOOLING_PYTHON=.ci/tooling/bin/python
+
+      - name: Verify staged selection projection
+        run: make addons-projection-check TOOLING_PYTHON=.ci/tooling/bin/python

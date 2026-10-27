@@ -1,0 +1,19 @@
+apiVersion: addons.neurwerk.com/v1alpha2
+kind: AddonSelection
+baseSourceRef:
+  kind: GitRepository
+  namespace: flux-system
+  name: k8s-stack
+# This example selects only the exact reviewed alpha Base source, not a stable tag.
+addons: []
+# Synthetic entry shape for a future optional product (not selected):
+# - id: sample-chat
+#   sourceRef: {kind: GitRepository, namespace: flux-system, name: sample-chat-addon}
+#   features: {speech: false}
+#   approvedReaders:
+#     - role: sample-chat
+#       namespace: sample-chat
+#       serviceAccount: sample-chat-external-secrets
+#       audience: openbao
+#       records: [runtime]
+# Add its Flux source and use its verified manifest's exact reader records first.
