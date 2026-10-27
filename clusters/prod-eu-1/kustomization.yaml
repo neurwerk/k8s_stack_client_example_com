@@ -1,10 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - addon-selection.yaml
   - cluster-identity.yaml
   - platform-source.yaml
   - namespaces.yaml
   - client-values.yaml
   - infrastructure.yaml
+  - addon-bootstrap.yaml
   - applications.yaml
   - flux-system

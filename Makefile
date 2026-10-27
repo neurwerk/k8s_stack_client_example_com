@@ -4,6 +4,7 @@
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
+.DEFAULT_GOAL := help
 
 # --- Tool discovery ---
 KUBECONFORM := $(shell command -v kubeconform 2>/dev/null || echo "")
@@ -19,9 +20,29 @@ CYAN   := \033[36m
 RESET  := \033[0m
 
 VALIDATION_ROOT = $(or $(VALIDATION_WORKTREE),$(CURDIR)/.ci/validation)
+SOURCE_CACHE ?= $(CURDIR)/.ci/addon-sources
+CLUSTER_DIR ?= clusters/prod-eu-1
+TOOLING_PYTHON ?= python3
+KUBE_VERSION ?= 1.36.4
+ADDON_PROJECT = $(TOOLING_PYTHON) -c 'from k8s_stack_tooling.addons.sources import projection_main; raise SystemExit(projection_main())'
 FLUX_COMPONENTS := clusters/prod-eu-1/flux-system/gotk-components.yaml
 
 .PHONY: help tools yaml-lint kustomize-validate contract-check validation-check platform-compatibility check flux-components pre-commit-install
+.PHONY: addons-acquire addons-check addons-project addons-projection-check
+
+addons-acquire: ## Acquire exact selected sources with ordinary operator/CI Git authentication
+	@$(TOOLING_PYTHON) -m k8s_stack_tooling.addons.acquisition --client "$(CURDIR)" --cluster-dir "$(CLUSTER_DIR)" --cache "$(SOURCE_CACHE)"
+
+addons-check: ## Check all selected sources using the installed reviewed shared Tooling package
+	@$(TOOLING_PYTHON) scripts/check_addons.py --cluster-dir "$(CLUSTER_DIR)" --source-cache "$(SOURCE_CACHE)" --kube-version "$(KUBE_VERSION)" --api-version external-secrets.io/v1 --api-version traefik.io/v1alpha1 --api-version cert-manager.io/v1 --api-version gateway.networking.k8s.io/v1
+
+addons-project: ## Generate installable selection metadata using the published shared CLI
+	@$(ADDON_PROJECT) --client "$(CURDIR)" --cluster-dir "$(CLUSTER_DIR)" --cache "$(SOURCE_CACHE)" --output "$(CLUSTER_DIR)/addon-selection.yaml"
+
+addons-projection-check: ## Reject absent or stale staged selection metadata
+	@temporary=$$(mktemp); trap 'rm -f "$$temporary"' EXIT; \
+	$(ADDON_PROJECT) --client "$(CURDIR)" --cluster-dir "$(CLUSTER_DIR)" --cache "$(SOURCE_CACHE)" --output "$$temporary"; \
+	cmp "$$temporary" "$(CLUSTER_DIR)/addon-selection.yaml"
 
 help: ## Show this help
 	@printf "$(CYAN)Available targets:$(RESET)\n"

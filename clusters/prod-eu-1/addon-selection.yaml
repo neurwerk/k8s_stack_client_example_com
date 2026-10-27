@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: addon-selection
+  namespace: flux-system
+data:
+  selection.json: '{"addons":[],"apiVersion":"addons.neurwerk.com/v1alpha2","base":{"manifestSha256":"f2029e579d92c2087ca295dae787c06957f5ccb3fc6503068ee26274074963f4","revision":"e5eca150c0f71d3f80b135c67f2451758a8f3db1","sourceRef":{"kind":"GitRepository","name":"k8s-stack","namespace":"flux-system"},"url":"https://github.com/neurwerk/k8s_stack_base.git"},"clusterDirectory":"clusters/prod-eu-1","installable":true,"selection":{"addons":[],"apiVersion":"addons.neurwerk.com/v1alpha2","baseSourceRef":{"kind":"GitRepository","name":"k8s-stack","namespace":"flux-system"},"externalInputs":[],"kind":"AddonSelection"},"workingBase":false}'

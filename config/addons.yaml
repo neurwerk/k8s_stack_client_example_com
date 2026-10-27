@@ -4,8 +4,7 @@ baseSourceRef:
   kind: GitRepository
   namespace: flux-system
   name: k8s-stack
-# This example currently selects only Base. Its existing Base pin must be
-# adopted separately before v1alpha2 installable validation or setup.
+# This example selects only the exact reviewed alpha Base source, not a stable tag.
 addons: []
 # Synthetic entry shape for a future optional product (not selected):
 # - id: sample-chat
