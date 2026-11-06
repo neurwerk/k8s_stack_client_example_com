@@ -1,4 +1,7 @@
 certManager:
-  email: admin@example.com
-  dnsZones:
-    - example.com
+  email: admin@example.com # ACME registration and certificate expiry contact.
+  dnsZones: [example.com] # Replace with the DNS zones you control.
+contextforge:
+  enabled: true # Approve the selected ContextForge certificate profile.
+  tls:
+    enabled: true # Require internal ContextForge TLS.

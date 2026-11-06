@@ -1,0 +1,5 @@
+gatewayModelMetadata:
+  enabled: true # Publish the metadata companion alongside the gateway catalog.
+  models: [] # Refresh from the sources below for your deployment; absent observations remain unknown.
+# Populate observations with gateway-model-metadata using config/gateway-model-metadata-sources.json.
+# Do not reuse another installation's runtime observations or invent capability/freshness evidence.

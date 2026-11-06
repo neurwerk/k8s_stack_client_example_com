@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: frontend-open-webui
+generatorOptions: {disableNameSuffixHash: true}
+configMapGenerator:
+  - name: client-values
+    files: [values.yaml=../../config/client.yaml]
+  - name: open-webui-product-values
+    files: [values.yaml=values.yaml]
+  - name: client-openrouter-catalog-values
+    files: [values.yaml=../../config/openrouter-catalog.yaml]
+  - name: open-webui-agentgateway-model-values
+    files: [values.yaml=../../infrastructure/networking/agentgateway/values.yaml]

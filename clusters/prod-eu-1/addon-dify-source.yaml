@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: dify-addon
+  namespace: flux-system
+  annotations: {platform.neurwerk.com/channel: alpha}
+spec:
+  interval: 1m
+  url: https://github.com/neurwerk/k8s_stack_addon_dify.git
+  ref: {commit: 65e4203a9e4446ded69a084f9ec45bb2c083c1e4} # Immutable public add-on source.

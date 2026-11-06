@@ -1,24 +1,412 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-metadata:
-  name: applications
-  namespace: flux-system
+metadata: {name: applications, namespace: flux-system}
 spec:
   interval: 10m
   path: ./releases/applications
+  # Dedicated ContextForge stages own these objects independently of Studio.
+  patches:
+    - target: {kind: ConfigMap, name: contextforge-(app-defaults|runtime), namespace: contextforge}
+      patch: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata: {name: contextforge}
+        $patch: delete
+    - target: {kind: HelmRelease, name: contextforge, namespace: contextforge}
+      patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata: {name: contextforge, namespace: contextforge}
+        $patch: delete
   timeout: 120m
-  wait: true
+  wait: false
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: keycloak, namespace: auth-keycloak}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: keycloak-agentgateway-oidc, namespace: auth-keycloak}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: keycloak-initial-admin, namespace: auth-keycloak}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: keycloak-keycloak-api-key-bridge-oidc, namespace: auth-keycloak}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: keycloak-realm-roles, namespace: auth-keycloak}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: keycloak-studio-oidc, namespace: auth-keycloak}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: keycloak-api-key-bridge, namespace: auth-keycloak-api-key-bridge}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: studio, namespace: frontend-studio}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: studio-api, namespace: frontend-studio}
+    - {apiVersion: apps/v1, kind: Deployment, name: frontend-studio-api-deployment, namespace: frontend-studio}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: agentgateway, namespace: infra-agentgateway}
+    - {apiVersion: v1, kind: ConfigMap, name: gateway-model-metadata-config-map, namespace: frontend-studio}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: agentgateway-extproc, namespace: monitor-agentgateway-extproc}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: langfuse, namespace: monitor-langfuse}
+    - {apiVersion: gateway.networking.k8s.io/v1, kind: Gateway, name: auth-keycloak-gateway, namespace: auth-keycloak}
+    - {apiVersion: gateway.networking.k8s.io/v1, kind: Gateway, name: infra-agentgateway-external-gateway, namespace: infra-agentgateway}
+    - {apiVersion: gateway.networking.k8s.io/v1, kind: Gateway, name: infra-agentgateway-gateway, namespace: infra-agentgateway}
+    - {apiVersion: gateway.networking.k8s.io/v1, kind: Gateway, name: monitor-langfuse-gateway, namespace: monitor-langfuse}
+    - {apiVersion: gateway.networking.k8s.io/v1, kind: Gateway, name: frontend-studio-gateway, namespace: frontend-studio}
   healthCheckExprs:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.observedGeneration == metadata.generation && c.status == "True")'
     - apiVersion: gateway.networking.k8s.io/v1
       kind: Gateway
-      inProgress: '!status.conditions.exists(e, e.type == ''Programmed'' && e.observedGeneration == metadata.generation) || status.listeners.size() != spec.listeners.size() || status.listeners.exists(l, !l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation)) || status.listeners.exists(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''False'' && e.reason == ''InvalidCertificateRef''))'
-      failed: 'status.listeners.exists(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''False'' && e.reason == ''RefNotPermitted''))'
-      current: 'status.conditions.exists(e, e.type == ''Programmed'' && e.observedGeneration == metadata.generation && e.status == ''True'') && status.listeners.size() == spec.listeners.size() && status.listeners.all(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''True''))'
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Programmed" && c.observedGeneration == metadata.generation && c.status == "True") && has(status.listeners) && status.listeners.size() == spec.listeners.size() && status.listeners.all(l, l.conditions.exists(c, c.type == "ResolvedRefs" && c.observedGeneration == metadata.generation && c.status == "True"))'
   prune: true
-  dependsOn:
-    - name: infrastructure
-    - name: client-app-values
-  sourceRef:
-    kind: GitRepository
-    name: k8s-stack
-    namespace: flux-system
+  dependsOn: [{name: infrastructure}, {name: client-app-values}, {name: studio-secret-sync}, {name: keycloak-api-key-bridge-secret-sync}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: keycloak-active-directory, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/keycloak/active-directory
+  timeout: 20m
+  wait: false
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: keycloak-active-directory, namespace: auth-keycloak}
+  prune: true
+  dependsOn: [{name: applications}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: contextforge-database, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/contextforge/postgres
+  timeout: 15m
+  wait: true
+  prune: true
+  dependsOn: [{name: contextforge-secret-sync}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: contextforge-application, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/contextforge/app
+  timeout: 25m
+  wait: true
+  prune: true
+  # Studio consumes setup output, so this stage must not depend on applications.
+  dependsOn: [{name: contextforge-database}, {name: contextforge-certificates}, {name: client-contextforge-values}, {name: client-app-values}, {name: client-infrastructure-values}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: open-webui-namespaces, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/namespaces/open-webui
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: namespaces}]
+  sourceRef: {kind: GitRepository, name: open-webui-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: open-webui-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/open-webui/secret-sync
+  timeout: 10m
+  wait: false # Create delivery resources before operator credential setup.
+  healthChecks:
+    - {apiVersion: v1, kind: ServiceAccount, namespace: frontend-open-webui, name: frontend-open-webui-external-secrets}
+  prune: true
+  dependsOn: [{name: open-webui-namespaces}, {name: external-secrets-controller}, {name: client-app-values}, {name: client-infrastructure-values}, {name: client-open-webui-values}]
+  sourceRef: {kind: GitRepository, name: open-webui-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: open-webui-database, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/open-webui/database
+  timeout: 15m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: infra-postgres-operations, name: open-webui-postgres-password}
+    - {apiVersion: v1, kind: Secret, namespace: infra-postgres-operations, name: open-webui-postgres-password}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: frontend-open-webui, name: frontend-open-webui-runtime-secret}
+    - {apiVersion: v1, kind: Secret, namespace: frontend-open-webui, name: frontend-open-webui-secret}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: infra-postgres-operations, name: open-webui-postgres}
+  prune: true
+  dependsOn: [{name: open-webui-secret-sync}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: open-webui-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: open-webui-access, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/open-webui/access
+  timeout: 15m
+  wait: true
+  prune: true
+  dependsOn: [{name: open-webui-secret-sync}, {name: applications}]
+  sourceRef: {kind: GitRepository, name: open-webui-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: open-webui-oidc, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/open-webui/oidc
+  timeout: 15m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: auth-keycloak, name: open-webui-oidc-secret}
+    - {apiVersion: v1, kind: Secret, namespace: auth-keycloak, name: open-webui-oidc-secret}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: open-webui-oidc-settings}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: keycloak-open-webui-oidc}
+  prune: true
+  dependsOn: [{name: open-webui-access}, {name: open-webui-secret-sync}]
+  sourceRef: {kind: GitRepository, name: open-webui-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: open-webui-certificate-approval, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/open-webui/certificate-approval
+  timeout: 15m
+  wait: true
+  prune: true
+  dependsOn: [{name: open-webui-namespaces}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: open-webui-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: open-webui-app, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/open-webui/app
+  timeout: 20m
+  wait: true
+  prune: true
+  dependsOn: [{name: open-webui-database}, {name: open-webui-oidc}, {name: open-webui-certificate-approval}, {name: client-open-webui-values}]
+  sourceRef: {kind: GitRepository, name: open-webui-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: librechat-namespaces, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/namespaces/librechat
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: namespaces}]
+  sourceRef: {kind: GitRepository, name: librechat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: librechat-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/librechat/secret-sync
+  timeout: 10m
+  wait: false # The settings producer is independent of operator-provisioned credentials.
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: frontend-librechat, name: frontend-librechat-shared}
+    - {apiVersion: v1, kind: ConfigMap, namespace: frontend-librechat, name: frontend-librechat-config-map}
+  prune: true
+  dependsOn: [{name: librechat-namespaces}, {name: external-secrets-controller}, {name: client-infrastructure-values}, {name: client-app-values}]
+  sourceRef: {kind: GitRepository, name: librechat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: librechat-database, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/librechat/database
+  timeout: 15m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: infra-postgres-operations, name: librechat-documentdb-password}
+    - {apiVersion: v1, kind: Secret, namespace: infra-postgres-operations, name: librechat-documentdb-password}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: frontend-librechat, name: frontend-librechat-runtime-secret}
+    - {apiVersion: v1, kind: Secret, namespace: frontend-librechat, name: frontend-librechat-secret}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: frontend-librechat, name: frontend-librechat-admin-panel-secret}
+    - {apiVersion: v1, kind: Secret, namespace: frontend-librechat, name: frontend-librechat-admin-panel-secret}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: frontend-librechat, name: frontend-librechat-stt-secret}
+    - {apiVersion: v1, kind: Secret, namespace: frontend-librechat, name: frontend-librechat-stt-secret}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: infra-postgres-operations, name: librechat-documentdb}
+  prune: true
+  dependsOn: [{name: librechat-secret-sync}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: librechat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: librechat-access, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/librechat/access
+  timeout: 15m
+  wait: true
+  prune: true
+  dependsOn: [{name: librechat-secret-sync}, {name: applications}]
+  sourceRef: {kind: GitRepository, name: librechat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: librechat-oidc, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/librechat/oidc
+  timeout: 15m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: auth-keycloak, name: librechat-oidc-secret}
+    - {apiVersion: v1, kind: Secret, namespace: auth-keycloak, name: librechat-oidc-secret}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: librechat-oidc-settings}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: keycloak-librechat-oidc}
+  prune: true
+  dependsOn: [{name: librechat-access}, {name: librechat-secret-sync}]
+  sourceRef: {kind: GitRepository, name: librechat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: librechat-certificate-approval, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/librechat/certificate-approval
+  timeout: 15m
+  wait: true
+  prune: true
+  dependsOn: [{name: librechat-namespaces}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: librechat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: librechat-app, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/librechat/app
+  timeout: 20m
+  wait: true
+  prune: true
+  dependsOn: [{name: librechat-database}, {name: librechat-oidc}, {name: librechat-certificate-approval}, {name: client-app-values}]
+  sourceRef: {kind: GitRepository, name: librechat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: dify, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/dify/app
+  timeout: 90m
+  wait: false
+  prune: true
+  dependsOn: [{name: dify-secret-sync}, {name: dify-database}, {name: dify-oidc}, {name: dify-managed-keys}, {name: dify-certificate-approval}, {name: client-dify-values}, {name: applications}]
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-model-sync, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-model-sync-access, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-redis, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-sandbox, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-agent, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-plugin-daemon, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-api, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-websocket, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-worker, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-beat, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-web-gui, namespace: frontend-dify}
+    - {apiVersion: gateway.networking.k8s.io/v1, kind: Gateway, name: frontend-dify-web-gui-gateway, namespace: frontend-dify}
+  healthCheckExprs:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.observedGeneration == metadata.generation && c.status == "True")'
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Programmed" && c.observedGeneration == metadata.generation && c.status == "True") && has(status.listeners) && status.listeners.size() == spec.listeners.size() && status.listeners.all(l, l.conditions.exists(c, c.type == "ResolvedRefs" && c.observedGeneration == metadata.generation && c.status == "True"))'
+  sourceRef: {kind: GitRepository, name: dify-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: pipecat-setup, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/pipecat/setup
+  timeout: 20m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: auth-keycloak, name: pipecat-oidc-secret}
+    - {apiVersion: v1, kind: Secret, namespace: auth-keycloak, name: pipecat-oidc-secret}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: pipecat, name: pipecat-oidc-secret}
+    - {apiVersion: v1, kind: Secret, namespace: pipecat, name: pipecat-oidc-secret}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: keycloak-pipecat-access}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: pipecat-oidc-settings}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: keycloak-pipecat-oidc}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: infra-cert-manager, name: pipecat-certificate-approval}
+  prune: true
+  dependsOn: [{name: pipecat-secret-sync}, {name: applications}]
+  sourceRef: {kind: GitRepository, name: pipecat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: pipecat-app, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/pipecat/app
+  timeout: 20m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: objectbucket.io/v1alpha1
+      kind: ObjectBucketClaim
+      current: 'has(status.phase) && status.phase == "Bound"'
+  healthChecks:
+    - {apiVersion: objectbucket.io/v1alpha1, kind: ObjectBucketClaim, namespace: pipecat, name: pipecat-scripts}
+    - {apiVersion: v1, kind: Secret, namespace: pipecat, name: rook-ceph-object-user-infra-rook-ceph-object-store-pipecat-script-reader}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: pipecat, name: pipecat}
+  prune: true
+  dependsOn: [{name: pipecat-setup}]
+  sourceRef: {kind: GitRepository, name: pipecat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: maintenance, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/maintenance
+  timeout: 5m
+  wait: false
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: maintenance, namespace: maintenance}
+  prune: true
+  dependsOn: [{name: client-maintenance-values}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: docling, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/docling/app
+  timeout: 75m
+  wait: false
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: reloader, namespace: infra-reloader}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: docling, namespace: docling}
+  prune: true
+  dependsOn: [{name: docling-namespaces}, {name: client-docling-values}, {name: docling-secret-sync}, {name: docling-reloader-values}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}

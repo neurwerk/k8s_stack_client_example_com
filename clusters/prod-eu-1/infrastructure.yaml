@@ -1,73 +1,645 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-metadata:
-  name: external-secrets-controller
-  namespace: flux-system
+metadata: {name: external-secrets-controller, namespace: flux-system}
 spec:
   interval: 10m
   path: ./releases/external-secrets
   timeout: 15m
-  prune: true
   wait: true
+  prune: true
   dependsOn: [{name: namespaces}]
   sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-metadata:
-  name: infrastructure
-  namespace: flux-system
+metadata: {name: infrastructure, namespace: flux-system}
 spec:
   interval: 1h
   path: ./releases/infrastructure
-  # The early controller stage owns this HelmRelease; never own it twice.
   patches:
-    # This example selects the same provider through releases/infrastructure.
-    - target:
-        group: helm.toolkit.fluxcd.io
-        kind: HelmRelease
-        name: postgres-operations
-        namespace: infra-postgres-operations
+    - target: {group: helm.toolkit.fluxcd.io, kind: HelmRelease, name: postgres-operations, namespace: infra-postgres-operations}
       patch: |
         apiVersion: helm.toolkit.fluxcd.io/v2
         kind: HelmRelease
-        metadata:
-          name: postgres-operations
-          namespace: infra-postgres-operations
+        metadata: {name: postgres-operations, namespace: infra-postgres-operations}
         spec:
           values:
             postgresOperations:
-              service:
-                postgresqlPort: 5432
-                documentdbPort: 10260
-              containerPorts:
-                postgresql: 9712
-                documentdb: 10260
-    - target:
-        kind: HelmRelease
-        name: external-secrets
-        namespace: infra-external-secrets
+              service: {postgresqlPort: 5432, documentdbPort: 10260}
+              containerPorts: {postgresql: 9712, documentdb: 10260}
+    # The early controller and dedicated ContextForge stages own these resources.
+    - target: {kind: HelmRelease, name: external-secrets, namespace: infra-external-secrets}
       patch: |
         apiVersion: helm.toolkit.fluxcd.io/v2
         kind: HelmRelease
-        metadata:
-          name: external-secrets
-          namespace: infra-external-secrets
+        metadata: {name: external-secrets, namespace: infra-external-secrets}
+        $patch: delete
+    - target: {kind: HelmRelease, name: contextforge-certificates, namespace: contextforge}
+      patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata: {name: contextforge-certificates, namespace: contextforge}
+        $patch: delete
+    - target: {kind: HelmRelease, name: contextforge-postgres, namespace: infra-postgres-operations}
+      patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata: {name: contextforge-postgres, namespace: infra-postgres-operations}
+        $patch: delete
+    - target: {kind: NetworkPolicy, name: contextforge-postgres, namespace: infra-postgres-operations}
+      patch: |
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata: {name: contextforge-postgres, namespace: infra-postgres-operations}
         $patch: delete
   timeout: 60m
   wait: true
   healthCheckExprs:
     - apiVersion: gateway.networking.k8s.io/v1
       kind: Gateway
-      inProgress: '!status.conditions.exists(e, e.type == ''Programmed'' && e.observedGeneration == metadata.generation) || status.listeners.size() != spec.listeners.size() || status.listeners.exists(l, !l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation)) || status.listeners.exists(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''False'' && e.reason == ''InvalidCertificateRef''))'
-      failed: 'status.listeners.exists(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''False'' && e.reason == ''RefNotPermitted''))'
-      current: 'status.conditions.exists(e, e.type == ''Programmed'' && e.observedGeneration == metadata.generation && e.status == ''True'') && status.listeners.size() == spec.listeners.size() && status.listeners.all(l, l.conditions.exists(e, e.type == ''ResolvedRefs'' && e.observedGeneration == metadata.generation && e.status == ''True''))'
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Programmed" && c.observedGeneration == metadata.generation && c.status == "True") && has(status.listeners) && status.listeners.size() == spec.listeners.size() && status.listeners.all(l, l.conditions.exists(c, c.type == "ResolvedRefs" && c.observedGeneration == metadata.generation && c.status == "True"))'
   prune: true
-  dependsOn:
-    - name: external-secrets-controller
-    - name: namespaces
-    - name: client-infrastructure-values
-  sourceRef:
-    kind: GitRepository
-    name: k8s-stack
-    namespace: flux-system
+  dependsOn: [{name: namespaces}, {name: librechat-namespaces}, {name: pipecat-namespaces}, {name: client-infrastructure-values}, {name: docling-reloader-values}, {name: external-secrets-controller}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: pipecat-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/pipecat/secret-sync
+  timeout: 10m
+  wait: false # Bootstrap storage and delivery without waiting for operator credentials.
+  healthCheckExprs:
+    - apiVersion: objectbucket.io/v1alpha1
+      kind: ObjectBucketClaim
+      current: 'has(status.phase) && status.phase == "Bound"'
+  healthChecks:
+    - {apiVersion: v1, kind: ServiceAccount, namespace: pipecat, name: pipecat-external-secrets}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: pipecat, name: pipecat-shared}
+    - {apiVersion: objectbucket.io/v1alpha1, kind: ObjectBucketClaim, namespace: pipecat, name: pipecat-scripts}
+    - {apiVersion: v1, kind: Secret, namespace: pipecat, name: rook-ceph-object-user-infra-rook-ceph-object-store-pipecat-script-publisher}
+    - {apiVersion: v1, kind: Secret, namespace: pipecat, name: rook-ceph-object-user-infra-rook-ceph-object-store-pipecat-script-reader}
+  prune: true
+  dependsOn: [{name: pipecat-namespaces}, {name: external-secrets-controller}, {name: client-pipecat-values}, {name: client-app-values}, {name: client-infrastructure-values}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: pipecat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: tailscale-namespaces, namespace: flux-system}
+spec:
+  interval: 1h
+  path: ./releases/namespaces/tailscale
+  timeout: 5m
+  wait: true
+  prune: true
+  patches:
+    - target: {group: '', version: v1, kind: Namespace, name: tailscale}
+      patch: |
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: tailscale
+          labels: {secrets.neurwerk.com/openbao-trust: "true"}
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-tailscale-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./infrastructure/tailscale
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: tailscale-namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: tailscale-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/tailscale/secret-sync
+  timeout: 5m
+  wait: false
+  prune: true
+  dependsOn: [{name: tailscale-namespaces}, {name: client-tailscale-values}, {name: external-secrets-controller}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: tailscale-operator, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/tailscale/operator
+  timeout: 5m
+  wait: false
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: operator-oauth, namespace: tailscale}
+    - {apiVersion: v1, kind: Secret, name: operator-oauth, namespace: tailscale}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: tailscale-operator, namespace: tailscale}
+    - {apiVersion: apps/v1, kind: Deployment, name: operator, namespace: tailscale}
+  patches:
+    - target: {group: helm.toolkit.fluxcd.io, version: v2, kind: HelmRelease, name: tailscale-operator}
+      patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata: {name: tailscale-operator, namespace: tailscale}
+        spec:
+          suspend: false
+          postRenderers:
+            - kustomize:
+                patches:
+                  - target: {group: apps, version: v1, kind: Deployment, name: operator}
+                    patch: |-
+                      apiVersion: apps/v1
+                      kind: Deployment
+                      metadata: {name: operator}
+                      spec:
+                        template:
+                          spec:
+                            volumes:
+                              - name: operator-home
+                                emptyDir: {}
+                            containers:
+                              - name: operator
+                                env: [{name: HOME, value: /home/operator}]
+                                volumeMounts: [{name: operator-home, mountPath: /home/operator}]
+  prune: true
+  dependsOn: [{name: tailscale-namespaces}, {name: client-tailscale-values}, {name: tailscale-secret-sync}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: tailscale-access, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/tailscale/access
+  timeout: 5m
+  wait: false
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: tailscale-access, namespace: tailscale}
+    - {apiVersion: v1, kind: Service, name: kube-api-tailnet, namespace: tailscale}
+  patches:
+    - target: {group: helm.toolkit.fluxcd.io, version: v2, kind: HelmRelease, name: tailscale-access}
+      patch: |
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata: {name: tailscale-access, namespace: tailscale}
+        spec: {suspend: false}
+  prune: true
+  dependsOn: [{name: tailscale-operator}, {name: client-tailscale-values}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: agentgateway-inspection-pki, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/agentgateway/inspection-pki
+  timeout: 20m
+  wait: false
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: agentgateway-inspection-pki, namespace: infra-agentgateway}
+    - {apiVersion: cert-manager.io/v1, kind: Certificate, name: agentgateway-inspection-root-2026-10-certificate, namespace: infra-cert-manager}
+    - {apiVersion: cert-manager.io/v1, kind: Certificate, name: agentgateway-inspection-signer-2026-10-certificate, namespace: infra-agentgateway}
+    - {apiVersion: trust.cert-manager.io/v1alpha1, kind: Bundle, name: agentgateway-inspection-root-2026-10-config-map}
+    - {apiVersion: v1, kind: ConfigMap, name: agentgateway-inspection-root-2026-10-config-map, namespace: infra-cert-manager}
+  healthCheckExprs:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.observedGeneration == metadata.generation && c.status == "True")'
+    - apiVersion: trust.cert-manager.io/v1alpha1
+      kind: Bundle
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Synced" && c.observedGeneration == metadata.generation && c.status == "True")'
+    - apiVersion: v1
+      kind: ConfigMap
+      current: '"ca.crt" in data && data["ca.crt"].size() > 0'
+  prune: true
+  dependsOn: [{name: infrastructure}, {name: client-agentgateway-inspection-pki-values}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: agentgateway-inspection-trust, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/agentgateway/inspection-trust
+  timeout: 20m
+  wait: false
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: agentgateway-inspection-trust, namespace: infra-agentgateway}
+    - {apiVersion: v1, kind: ConfigMap, name: agentgateway-inspection-trust-config-map, namespace: frontend-studio}
+  healthCheckExprs:
+    - apiVersion: v1
+      kind: ConfigMap
+      current: '"snapshots.json" in data && data["snapshots.json"].size() > 0'
+  prune: true
+  dependsOn: [{name: agentgateway-inspection-pki}, {name: client-agentgateway-inspection-trust-values}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: contextforge-configuration, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/contextforge/configuration
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: client-contextforge-values}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: contextforge-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/contextforge/secret-sync/database
+  timeout: 5m
+  wait: false
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: contextforge-openbao-secret-store, namespace: contextforge}
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: infra-postgres-operations-openbao-secret-store, namespace: infra-postgres-operations}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: contextforge-runtime, namespace: contextforge}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: contextforge-postgres-values, namespace: infra-postgres-operations}
+    - {apiVersion: v1, kind: Secret, name: contextforge-runtime, namespace: contextforge}
+    - {apiVersion: v1, kind: Secret, name: contextforge-postgres-values, namespace: infra-postgres-operations}
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True")'
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  prune: true
+  # Do not wait for infrastructure Ready: its database consumes these credentials.
+  dependsOn: [{name: contextforge-configuration}, {name: client-infrastructure-values}, {name: external-secrets-controller}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: contextforge-oauth-apps, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/contextforge/oauth-apps
+  timeout: 5m
+  wait: false
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: contextforge-oauth-apps, namespace: contextforge}
+    - {apiVersion: v1, kind: Secret, name: contextforge-oauth-apps, namespace: contextforge}
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  prune: true
+  dependsOn: [{name: contextforge-secret-sync}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: contextforge-certificates, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/contextforge/certificates
+  timeout: 15m
+  wait: false
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: contextforge-certificates, namespace: contextforge}
+    - {apiVersion: cert-manager.io/v1, kind: Certificate, name: contextforge, namespace: contextforge}
+    - {apiVersion: v1, kind: Secret, name: contextforge-tls, namespace: contextforge}
+  healthCheckExprs:
+    - apiVersion: cert-manager.io/v1
+      kind: Certificate
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.observedGeneration == metadata.generation && c.status == "True")'
+  prune: true
+  dependsOn: [{name: client-contextforge-values}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: studio-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/studio/secret-sync
+  timeout: 5m
+  wait: false
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: infra-postgres-operations-openbao-secret-store, namespace: infra-postgres-operations}
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: frontend-studio-openbao-secret-store, namespace: frontend-studio}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: studio-postgres-values, namespace: infra-postgres-operations}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: frontend-studio-postgres-secret, namespace: frontend-studio}
+    - {apiVersion: v1, kind: Secret, name: studio-postgres-values, namespace: infra-postgres-operations}
+    - {apiVersion: v1, kind: Secret, name: frontend-studio-postgres-secret, namespace: frontend-studio}
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True")'
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  prune: true
+  dependsOn: [{name: namespaces}, {name: client-infrastructure-values}, {name: client-app-values}, {name: external-secrets-controller}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: keycloak-api-key-bridge-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/keycloak-api-key-bridge/secret-sync
+  timeout: 5m
+  wait: false
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: infra-postgres-operations-openbao-secret-store, namespace: infra-postgres-operations}
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: auth-keycloak-api-key-bridge-openbao-secret-store, namespace: auth-keycloak-api-key-bridge}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: api-key-bridge-postgres-values, namespace: infra-postgres-operations}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: auth-keycloak-api-key-bridge-postgres-secret, namespace: auth-keycloak-api-key-bridge}
+    - {apiVersion: v1, kind: Secret, name: api-key-bridge-postgres-values, namespace: infra-postgres-operations}
+    - {apiVersion: v1, kind: Secret, name: auth-keycloak-api-key-bridge-postgres-secret, namespace: auth-keycloak-api-key-bridge}
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True")'
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  prune: true
+  dependsOn: [{name: namespaces}, {name: client-infrastructure-values}, {name: client-app-values}, {name: external-secrets-controller}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: dify-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/dify/secret-sync
+  timeout: 5m
+  wait: false # Publish templates before operator setup produces their credentials.
+  healthChecks:
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-shared, namespace: frontend-dify}
+    - {apiVersion: v1, kind: ConfigMap, name: frontend-dify-secret-template, namespace: frontend-dify}
+  prune: true
+  dependsOn: [{name: dify-namespaces}, {name: external-secrets-controller}, {name: client-dify-values}, {name: client-app-values}, {name: client-infrastructure-values}]
+  sourceRef: {kind: GitRepository, name: dify-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: dify-database, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/dify/database
+  timeout: 15m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: frontend-dify-postgres-password, namespace: infra-postgres-operations}
+    - {apiVersion: v1, kind: Secret, name: frontend-dify-postgres-password, namespace: infra-postgres-operations}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: frontend-dify-runtime-secret, namespace: frontend-dify}
+    - {apiVersion: v1, kind: Secret, name: frontend-dify-secret, namespace: frontend-dify}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: frontend-dify-openbao-secret, namespace: frontend-dify}
+    - {apiVersion: v1, kind: Secret, name: frontend-dify-openbao-secret, namespace: frontend-dify}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: frontend-dify-postgres, namespace: infra-postgres-operations}
+  prune: true
+  dependsOn: [{name: dify-secret-sync}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: dify-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: dify-access, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/dify/access
+  timeout: 20m
+  wait: true
+  prune: true
+  dependsOn: [{name: dify-secret-sync}, {name: client-app-values}]
+  sourceRef: {kind: GitRepository, name: dify-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: dify-oidc, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/dify/oidc
+  timeout: 20m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, namespace: auth-keycloak, name: dify-oidc-secret}
+    - {apiVersion: v1, kind: Secret, namespace: auth-keycloak, name: dify-oidc-secret}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: dify-oidc-settings}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: keycloak-dify-oidc}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, namespace: auth-keycloak, name: keycloak-dify-agentgateway-oidc}
+  prune: true
+  dependsOn: [{name: dify-access}, {name: dify-secret-sync}, {name: client-app-values}, {name: client-dify-values}]
+  sourceRef: {kind: GitRepository, name: dify-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: dify-managed-keys, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/dify/managed-keys
+  timeout: 15m
+  wait: false
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: dify-managed-key-verifiers, namespace: auth-keycloak-api-key-bridge}
+    - {apiVersion: v1, kind: Secret, name: dify-managed-key-verifiers, namespace: auth-keycloak-api-key-bridge}
+    - {apiVersion: helm.toolkit.fluxcd.io/v2, kind: HelmRelease, name: dify-managed-keys, namespace: auth-keycloak-api-key-bridge}
+  prune: true
+  dependsOn: [{name: dify-oidc}, {name: dify-secret-sync}, {name: client-app-values}, {name: client-dify-values}]
+  sourceRef: {kind: GitRepository, name: dify-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: dify-certificate-approval, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/dify/certificate-approval
+  timeout: 20m
+  wait: true
+  prune: true
+  dependsOn: [{name: dify-namespaces}, {name: infrastructure}, {name: client-infrastructure-values}]
+  sourceRef: {kind: GitRepository, name: dify-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: docling-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/docling/secret-sync/internal
+  timeout: 5m
+  wait: false
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: docling-openbao-secret-store, namespace: docling}
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: monitor-agentgateway-extproc-openbao-secret-store, namespace: monitor-agentgateway-extproc}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: docling-api, namespace: docling}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: monitor-agentgateway-extproc-docling-secret, namespace: monitor-agentgateway-extproc}
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True")'
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  prune: true
+  dependsOn: [{name: docling-namespaces}, {name: client-docling-values}, {name: infrastructure}, {name: namespaces}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: docling-reloader-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/docling/reloader
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: namespaces}, {name: docling-namespaces}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: glitchtip-namespaces, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/namespaces/glitchtip
+  timeout: 5m
+  wait: true
+  prune: true
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-glitchtip-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/glitchtip
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: glitchtip-namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: glitchtip-secret-sync, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/glitchtip/secret-sync
+  timeout: 5m
+  wait: false
+  prune: true
+  # The operations database consumes these credentials; do not wait for infrastructure Ready.
+  dependsOn: [{name: client-glitchtip-values}, {name: client-infrastructure-values}, {name: external-secrets-controller}]
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: SecretStore, name: glitchtip-openbao-secret-store, namespace: glitchtip}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: glitchtip-runtime, namespace: glitchtip}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: glitchtip-postgres-values, namespace: infra-postgres-operations}
+    - {apiVersion: v1, kind: Secret, name: glitchtip-runtime, namespace: glitchtip}
+    - {apiVersion: v1, kind: Secret, name: glitchtip-postgres-values, namespace: infra-postgres-operations}
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: SecretStore
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True")'
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: glitchtip-initial-owner, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/glitchtip/secret-sync/initial-owner
+  timeout: 5m
+  wait: false
+  prune: true
+  dependsOn: [{name: client-glitchtip-values}, {name: external-secrets-controller}]
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: glitchtip-owner, namespace: glitchtip}
+    - {apiVersion: v1, kind: Secret, name: glitchtip-owner, namespace: glitchtip}
+  healthCheckExprs:
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: glitchtip-postgres, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/glitchtip/postgres
+  timeout: 15m
+  wait: true
+  prune: true
+  dependsOn: [{name: glitchtip-secret-sync}, {name: infrastructure}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: glitchtip-tailscale-access, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/glitchtip/tailscale-access
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: glitchtip-namespaces}, {name: tailscale-operator}]
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: glitchtip-app, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/glitchtip/app
+  timeout: 30m
+  wait: true
+  prune: true
+  dependsOn: [{name: client-glitchtip-values}, {name: glitchtip-secret-sync}, {name: glitchtip-initial-owner}, {name: glitchtip-postgres}, {name: glitchtip-tailscale-access}]
+  # For first setup, provision with the adapter off, import its DSN, then enable it.
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: glitchtip-adapter-access, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/glitchtip/adapter-access
+  timeout: 5m
+  wait: false
+  prune: true
+  dependsOn: [{name: glitchtip-app}]
+  healthChecks:
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: glitchtip-adapter, namespace: glitchtip}
+    - {apiVersion: external-secrets.io/v1, kind: ExternalSecret, name: glitchtip-opensearch-reader, namespace: monitor-opensearch}
+    - {apiVersion: v1, kind: Secret, name: glitchtip-adapter, namespace: glitchtip}
+    - {apiVersion: v1, kind: Secret, name: glitchtip-opensearch-reader, namespace: monitor-opensearch}
+    - {apiVersion: v1, kind: ConfigMap, name: glitchtip-opensearch-ca, namespace: glitchtip}
+    - {apiVersion: trust.cert-manager.io/v1alpha1, kind: Bundle, name: glitchtip-opensearch-ca}
+  healthCheckExprs:
+    - apiVersion: v1
+      kind: ConfigMap
+      current: '"ca.crt" in data && data["ca.crt"].size() > 0'
+    - apiVersion: trust.cert-manager.io/v1alpha1
+      kind: Bundle
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Synced" && c.status == "True" && c.observedGeneration == metadata.generation)'
+    - apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.status == "True") && has(status.syncedResourceVersion) && status.syncedResourceVersion.startsWith(string(metadata.generation) + "-")'
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}

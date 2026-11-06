@@ -1,35 +1,147 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-metadata:
-  name: client-app-values
-  namespace: flux-system
+metadata: {name: client-app-values, namespace: flux-system}
 spec:
   interval: 10m
   path: ./apps
   timeout: 5m
   wait: true
   prune: true
-  dependsOn:
-    - name: namespaces
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
+  dependsOn: [{name: namespaces}, {name: librechat-namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-metadata:
-  name: client-infrastructure-values
-  namespace: flux-system
+metadata: {name: client-infrastructure-values, namespace: flux-system}
 spec:
   interval: 10m
   path: ./infrastructure
   timeout: 5m
   wait: true
   prune: true
-  dependsOn:
-    - name: namespaces
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
+  dependsOn: [{name: namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-pipecat-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/pipecat
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: pipecat-namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-open-webui-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/open-webui
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: open-webui-namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-dify-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/dify
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: namespaces}, {name: dify-namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-contextforge-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/contextforge
+  timeout: 10m
+  wait: false # Apply values before waiting for certificate approval and trust readiness.
+  healthChecks:
+    - {apiVersion: policy.cert-manager.io/v1alpha1, kind: CertificateRequestPolicy, name: cert-manager-internal-contextforge-server}
+    - {apiVersion: cert-manager.io/v1, kind: ClusterIssuer, name: infra-cert-manager-internal-ca-issuer}
+    - {apiVersion: v1, kind: ConfigMap, name: infra-openbao-ca-bundle, namespace: contextforge}
+    - {apiVersion: v1, kind: ConfigMap, name: infra-openbao-ca-bundle, namespace: infra-postgres-operations}
+  healthCheckExprs:
+    - apiVersion: policy.cert-manager.io/v1alpha1
+      kind: CertificateRequestPolicy
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.observedGeneration == metadata.generation && c.status == "True")'
+    - apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.observedGeneration == metadata.generation && c.status == "True")'
+    - apiVersion: v1
+      kind: ConfigMap
+      current: '"ca.crt" in data && data["ca.crt"].size() > 0'
+  prune: true
+  dependsOn: [{name: contextforge-namespaces}, {name: namespaces}, {name: client-infrastructure-values}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-maintenance-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/maintenance
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: maintenance-namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-docling-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/docling
+  timeout: 5m
+  wait: false # The exact optional approval policy must be ready before certificate issuance.
+  healthChecks:
+    - {apiVersion: policy.cert-manager.io/v1alpha1, kind: CertificateRequestPolicy, name: cert-manager-internal-docling-server}
+  healthCheckExprs:
+    - apiVersion: policy.cert-manager.io/v1alpha1
+      kind: CertificateRequestPolicy
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.observedGeneration == metadata.generation && c.status == "True")'
+  prune: true
+  dependsOn: [{name: docling-namespaces}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-agentgateway-inspection-pki-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/agentgateway/inspection-pki
+  timeout: 10m
+  wait: false # Gate issuance on both current-generation approval policies.
+  healthChecks:
+    - {apiVersion: policy.cert-manager.io/v1alpha1, kind: CertificateRequestPolicy, name: cert-manager-agentgateway-inspection-root-2026-10}
+    - {apiVersion: policy.cert-manager.io/v1alpha1, kind: CertificateRequestPolicy, name: cert-manager-agentgateway-inspection-signer-2026-10}
+  healthCheckExprs:
+    - apiVersion: policy.cert-manager.io/v1alpha1
+      kind: CertificateRequestPolicy
+      current: 'has(status.conditions) && status.conditions.exists(c, c.type == "Ready" && c.observedGeneration == metadata.generation && c.status == "True")'
+  prune: true
+  dependsOn: [{name: client-infrastructure-values}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: client-agentgateway-inspection-trust-values, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./apps/agentgateway/inspection-trust
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: agentgateway-inspection-pki}]
+  sourceRef: {kind: GitRepository, name: flux-system, namespace: flux-system}

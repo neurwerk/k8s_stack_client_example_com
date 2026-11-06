@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: infra-agentgateway
+generatorOptions: {disableNameSuffixHash: true}
+configMapGenerator:
+  - name: agentgateway-inspection-trust-product-values
+    files: [values.yaml=values.yaml]

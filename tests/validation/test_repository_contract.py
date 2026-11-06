@@ -22,6 +22,8 @@ SECRET_REFERENCE_KEYS = {
     "existingsecretname",
     "secretname",
     "secretref",
+    "oauthsecret",
+    "verifiersecret",
 }
 SENSITIVE_KEY_PARTS = (
     "password",
@@ -45,7 +47,7 @@ CREDENTIAL_PATTERNS = (
 
 
 def values_paths() -> list[Path]:
-    paths = [ROOT / "config/client.yaml"]
+    paths = [ROOT / "config/client.yaml", ROOT / "config/openrouter-catalog.yaml"]
     paths.extend((ROOT / "apps").glob("**/values.yaml"))
     paths.extend((ROOT / "infrastructure").glob("**/values.yaml"))
     return sorted(paths)
@@ -159,10 +161,18 @@ class RepositoryContractTests(unittest.TestCase):
                         if normalized_key in SECRET_REFERENCE_KEYS or normalized_key.endswith(
                             ("secretref", "secretname")
                         ):
-                            self.assertIsInstance(value, str)
-                            self.assertRegex(
-                                value, r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
-                            )
+                            if value_path == ("docling", "apiKeySecretRef"):
+                                self.assertIsInstance(value, dict)
+                                self.assertEqual(set(value), {"name", "key"})
+                                self.assertRegex(
+                                    value["name"], r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+                                )
+                                self.assertRegex(value["key"], r"^[A-Za-z0-9._-]+$")
+                            else:
+                                self.assertIsInstance(value, str)
+                                self.assertRegex(
+                                    value, r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$"
+                                )
                         else:
                             self.assertIn(value, (None, ""))
 

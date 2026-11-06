@@ -1,0 +1,42 @@
+# Generated from the example gateway catalog with both global credentials available.
+# Regenerate with dify-model-sync project after changing bindings, policies, URLs or metadata.
+frontendDify:
+  modelSync:
+    enabled: true # Install inert support; the operator explicitly previews/applies model synchronization.
+    projection:
+      schema_version: 2
+      catalog_revision: 3a00652bf5994a55b44fef0675293a0f3a7961b26f5ef7d9f6b660c23d98e6e6
+      metadata_revision: e7f376563ba0c7d2c2c4816a08257cd78efef31171e60730a14c4dc86352fcf9
+      roles:
+        - llm:invoke
+        - model:local/llama3.2-3b:invoke
+        - model:remote/deepseek/v4.1-flash:invoke
+        - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+        - provider:deepseek:global-use
+        - provider:openrouter:global-use
+      bindings:
+        - {id: deepseek, api_path: /deepseek/api}
+        - {id: local, api_path: /local/api}
+        - {id: openrouter, api_path: /openrouter/api}
+      models:
+        - binding_id: deepseek
+          public_id: remote/deepseek/v4.1-flash
+          credential_mode: global
+          metadata: null # Unknown until provider observations are refreshed for your deployment.
+        - binding_id: local
+          public_id: local/llama3.2-3b
+          credential_mode: none
+          metadata: null # Obtain limits and capabilities from your actual inference runtime.
+        - binding_id: openrouter
+          public_id: remote/openrouter/deepseek/deepseek-v4.1-flash-1017
+          credential_mode: global
+          metadata: null # Refresh public provider observations before native model synchronization.
+      projection_revision: 4598852dae90a51fe7c4ce4df82db957a28a25f1d3707ae0e3ece1f53d5017bc
+authKeycloak:
+  difyAgentgatewayClientRoles: # Generated role request; the service approval remains the upper bound.
+    - llm:invoke
+    - model:local/llama3.2-3b:invoke
+    - model:remote/deepseek/v4.1-flash:invoke
+    - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+    - provider:deepseek:global-use
+    - provider:openrouter:global-use

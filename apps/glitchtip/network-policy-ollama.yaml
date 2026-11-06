@@ -1,0 +1,14 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: glitchtip-ollama-egress, namespace: glitchtip}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: glitchtip, app.kubernetes.io/instance: glitchtip}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: inference} # Match the namespace of your local inference service.
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: ollama} # Match the actual local inference pods.
+      ports: [{protocol: TCP, port: 11434}] # Local model health endpoint.

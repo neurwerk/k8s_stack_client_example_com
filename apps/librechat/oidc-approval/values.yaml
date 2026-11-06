@@ -1,0 +1,35 @@
+addonAccess:
+  platformAdminGrant: true # Allow platform administrators to administer LibreChat.
+clientApproval:
+  clientId: librechat # Exact browser identity requested by the add-on.
+  realmRoles: [librechat-user, librechat-admin] # Approved application access and admin roles.
+  audiences: [agentgateway] # Allow gateway-audience tokens for the approved destinations.
+  gatewayPermissions: # Bound the roles the add-on may request; users still need their own grants.
+    - llm:invoke
+    - provider:openrouter:global-use
+    - provider:deepseek:global-use
+    - model:local/llama3.2-3b:invoke
+    - model:remote/deepseek/v4.1-flash:invoke
+    - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+    - model:remote/openai/codex/gpt-6-astra:invoke
+    - mcp:brave:invoke
+    - mcp:context7:invoke
+    - mcp:github:invoke
+    - mcp:glitchtip:invoke
+  redirectUris: # Exact callback URLs; no wildcard redirect grants.
+    - https://librechat.example.com/oauth/openid/callback
+    - https://librechat.example.com/api/admin/oauth/openid/callback
+  webOrigins: [https://librechat.example.com, https://admin.librechat.example.com] # Approved browser origins.
+authentication:
+  gatewayPermissions: # Requested permissions must remain a subset of clientApproval above.
+    - llm:invoke
+    - provider:openrouter:global-use
+    - provider:deepseek:global-use
+    - model:local/llama3.2-3b:invoke
+    - model:remote/deepseek/v4.1-flash:invoke
+    - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+    - model:remote/openai/codex/gpt-6-astra:invoke
+    - mcp:brave:invoke
+    - mcp:context7:invoke
+    - mcp:github:invoke
+    - mcp:glitchtip:invoke

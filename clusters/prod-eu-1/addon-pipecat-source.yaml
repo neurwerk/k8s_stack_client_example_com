@@ -1,0 +1,7 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata: {name: pipecat-addon, namespace: flux-system}
+spec:
+  interval: 10m
+  url: https://github.com/neurwerk/k8s_stack_addon_pipecat.git
+  ref: {commit: 5b805ed57e0a740c4c40f3123108073ac02945a9} # Immutable public add-on source.

@@ -1,3 +1,10 @@
 authKeycloakApiKeyBridge:
-  persistence:
-    size: 1Gi
+  managedRegistrations: # Register only the Dify keys prepared by the add-on's managed-key stage.
+    - grantConfigMap: dify-managed-key-grants # Generated grant configuration.
+      grantKey: primary.json # Primary key grant record.
+      verifierSecret: dify-managed-key-verifiers # ESO-delivered verifier Secret, never the raw API key.
+      verifierKey: difyAgentgatewayPrimaryVerifierSha256 # Primary verifier data key.
+    - grantConfigMap: dify-managed-key-grants # Same grant producer for rotation support.
+      grantKey: secondary.json # Secondary key grant record.
+      verifierSecret: dify-managed-key-verifiers # ESO-delivered verifier Secret.
+      verifierKey: difyAgentgatewaySecondaryVerifierSha256 # Secondary verifier data key.

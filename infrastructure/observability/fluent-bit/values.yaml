@@ -1,1 +1,2 @@
-# Client overrides for Fluent Bit (empty placeholder)
+fluent-bit:
+  flush: 5 # Seconds between buffered log flushes to OpenSearch.

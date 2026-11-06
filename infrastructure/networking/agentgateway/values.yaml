@@ -1,200 +1,54 @@
-# Per-app configuration for infra-agentgateway
-# Example/template showing all possible overrides.
-# Copy this to a new client repo and adjust values.
-
-# ── Local LLM (llama.cpp) ─────────────────────────────────────────────────────
-# Enable for clients that have a local llama.cpp/Ollama server on their network.
-# Required for local:true models and for piiReroute fallbacks.
 infraAgentgatewayWrapper:
-  llamacpp:
-    enabled: true
-    host: ollama.internal.example
-    port: 11434
-
-# ── ExtAuthz timeout ──────────────────────────────────────────────────────────
-# Override the proxy-level timeout for external authorization subrequests
-# (keycloak-api-key-bridge /validate).  Default: "1s".
-# Increase if the bridge is slow (large clusters, far Keycloak instance):
-#
-#infraAgentgatewayWrapper:
-#  extAuthz:
-#    requestTimeout: "2s"
-#  llamacpp:
-#    enabled: true
-#    host: ollama.internal.example
-#    port: 11434
-
-# ── Model-centric serving ─────────────────────────────────────────────────────
-# Each entry is a model users can select (discoverable on /v1/models).
+  tracing:
+    fields:
+      add:
+        langfuse.observation.metadata.conversation_id: 'default(request.headers["x-session-id"], null)' # Correlation only; identity comes from the verified token.
+  llamacpp: # Legacy backend settings; keep aligned with the local binding in config/client.yaml.
+    enabled: true # The binding's upstreamURL is authoritative for current gateway routes.
+    host: ollama.inference.svc.cluster.local # Replace with your trusted inference Service or hostname.
+    port: 11434 # Ollama's OpenAI-compatible HTTP port.
+externalGateway:
+  enabled: true # Route canonical public API URLs through Traefik.
+aiGateway:
+  proxy:
+    tlsSecretName: agentgateway-proxy-tls-secrets # cert-manager owns this proxy-server certificate.
+    signerSecretName: agentgateway-inspection-signer-2026-10-secrets # Match the selected inspection root ID.
+    ingressPeers: # Only the edge proxy may connect to the inspected TLS listener.
+      - namespaceSelector:
+          matchLabels: {kubernetes.io/metadata.name: kube-system}
+        podSelector:
+          matchLabels: {app.kubernetes.io/name: traefik}
 guardrails:
   llmPolicyEngine:
-    localTarget:
-      name: llama-cpp
-      model: llama3.2:3b
-      provider: Custom
-      custom:
-        formats:
-          - type: Completions
-    models:
-      # OpenRouter leaderboard models, all rerouted locally on PII.
-      - name: remote/openrouter/deepseek-v4-flash-0731
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: deepseek/deepseek-v4-flash-0731
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/mimo-v2.5
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: xiaomi/mimo-v2.5
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/hy3
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: tencent/hy3
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/deepseek-v4-flash
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: deepseek/deepseek-v4-flash
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/nemotron-3-ultra-free
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: nvidia/nemotron-3-ultra-550b-a55b:free
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/gpt-5.6-luna
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: openai/gpt-5.6-luna
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/glm-5.2
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: z-ai/glm-5.2
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/gemini-3.7-flash
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: google/gemini-3.7-flash
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/deepseek-v4-pro-0423
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: deepseek/deepseek-v4-pro
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/minimax-m3
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: minimax/minimax-m3
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/laguna-s-2.1-free
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: poolside/laguna-s-2.1:free
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/claude-opus-5
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: anthropic/claude-opus-5
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/gpt-5.6-sol
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: openai/gpt-5.6-sol
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/kimi-k3
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: moonshotai/kimi-k3
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/claude-sonnet-5
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: anthropic/claude-sonnet-5
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/nemotron-3.5-lightning-free
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: nvidia/nemotron-3.5-lightning:free
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/deepseek-v4-pro-0813
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: deepseek/deepseek-v4-pro-0813
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/gemini-3-flash-preview
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: google/gemini-3-flash-preview
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: remote/openrouter/gemini-2.5-flash-lite
-        piiEnabled: true
-        contentTracingEnabled: true
-        provider: Openrouter
-        model: google/gemini-2.5-flash-lite
-        baseURL: https://openrouter.ai/api/v1
-        authSecret: infra-agentgateway-secret
-        piiReroute: true
-      - name: local/llama3.2-3b
-        piiEnabled: false
-        contentTracingEnabled: true
-        model: llama3.2:3b
-        local: true
-
-# ── Guardrails ────────────────────────────────────────────────────────────────
-# Content safety and PII detection are handled by the extProc LLM Policy Engine.
-# Configure monitorPiiEngine.policy in config/client.yaml.
+    models: # Explicit policies override matching entries from config/openrouter-catalog.yaml.
+      - name: remote/openrouter/deepseek/deepseek-v4.1-flash-1017 # The single selected OpenRouter model.
+        piiEnabled: true # Apply the configured PII policy.
+        contentTracingEnabled: true # Record eligible content traces.
+        provider: Openrouter # OpenRouter adapter name.
+        model: deepseek/deepseek-v4.1-flash-1017 # Exact upstream model ID.
+        label: DeepSeek V4.1 Flash 1017 # Display label.
+        group: Remote-OpenRouter-DeepSeek # Display group.
+        baseURL: https://openrouter.ai/api/v1 # Official provider API origin.
+        authSecret: infra-agentgateway-secret # ESO-delivered provider key reference.
+        supportsImages: true # Attachment policy extracts text instead of forwarding image bytes.
+        attachments:
+          documents: {mode: extract-text} # Extract document text with Docling.
+          images: {mode: extract-text} # Extract image text with Docling.
+      - name: remote/deepseek/v4.1-flash # Canonical ID used by bindings and authorization roles.
+        piiEnabled: true # Apply the configured PII policy to remote requests.
+        contentTracingEnabled: true # Record eligible content in Langfuse.
+        provider: Deepseek # Direct-provider adapter name.
+        model: deepseek-flash # Actual upstream model identifier.
+        label: DeepSeek Flash V4.1 # Human-readable model label.
+        group: Remote-Deepseek # Group shown in model selectors.
+        baseURL: https://api.deepseek.com/v1 # Official direct-provider API origin.
+        authSecret: infra-agentgateway-deepseek-secret # Reference to the separately delivered API key.
+        supportsImages: true # Attachment handling below extracts text before forwarding.
+        attachments:
+          documents: {mode: extract-text} # Use Docling to extract document text.
+          images: {mode: extract-text} # Use Docling to extract image text.
+      - name: local/llama3.2-3b # Canonical ID of the one local model.
+        piiEnabled: false # Trusted local fallback avoids recursive privacy reroutes.
+        contentTracingEnabled: true # Record eligible local-model traces.
+        model: llama3.2:3b # Model tag installed on your local inference server.
+        local: true # Trusted local model; the binding in config/client.yaml selects its upstream.

@@ -9,7 +9,7 @@ spec:
   interval: 30s
   url: https://github.com/neurwerk/k8s_stack_base.git
   ref:
-    commit: 920e0b712dd2a1d2861c230973418fd90320ebb0
+    commit: b812da185a8a8581cb0be54547d80cd5d89e760c # Exact reviewed alpha source; update with compatibility checks.
   verify:
     mode: HEAD
     secretRef:

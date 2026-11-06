@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: auth-keycloak
+generatorOptions:
+  disableNameSuffixHash: true
+  labels: {reconcile.fluxcd.io/watch: Enabled}
+configMapGenerator:
+  - name: dify-oidc-approval-values
+    files: [values.yaml=../oidc-approval/values.yaml]
+  - name: dify-service-approval-values
+    files: [values.yaml=../service-approval/values.yaml]
+  - name: dify-keycloak-access-values
+    files: [values.yaml=values.yaml]
+  - name: dify-model-sync-values
+    files: [values.yaml=../../../config/dify-model-sync.yaml]

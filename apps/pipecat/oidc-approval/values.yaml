@@ -1,0 +1,9 @@
+addonAccess:
+  platformAdminGrant: true # Allow platform administrators to administer Pipecat.
+clientApproval:
+  clientId: pipecat # Must match the add-on browser identity.
+  realmRoles: [pipecat-user] # Approved application role.
+  audiences: [agentgateway] # Permit gateway-audience tokens for the approved local model.
+  gatewayPermissions: [llm:invoke, 'model:local/llama3.2-3b:invoke'] # No shared remote billing rights.
+  redirectUris: [https://pipecat.example.com/simple_chatbot/auth/callback] # Match the bot's URL slug.
+  webOrigins: [https://pipecat.example.com] # Exact approved browser origin.

@@ -1,0 +1,12 @@
+agentgateway:
+  inspection:
+    trust:
+      enabled: true # Publish only public inspection root certificates to Studio.
+      operation: initialize # Use initialize for the first publication; use stage/promote for later rotations.
+      roots:
+        - id: '2026-10' # Match agentgateway.inspection.rootIds in config/client.yaml.
+          fingerprintSha256: '0000000000000000000000000000000000000000000000000000000000000000' # Replace with your verified public root fingerprint before publishing trust.
+          state: active # The root used by the currently selected signing certificate.
+      kubernetesApiEgress: # Replace these documentation addresses with your cluster API endpoints.
+        - {cidr: 10.96.0.1/32, port: 443}
+        - {cidr: 192.0.2.10/32, port: 6443}

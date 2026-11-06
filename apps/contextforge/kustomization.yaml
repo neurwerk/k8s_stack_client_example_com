@@ -1,0 +1,4 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The dedicated client-contextforge-values stage owns these namespace-local copies.
+resources: [runtime-values, postgres-values]

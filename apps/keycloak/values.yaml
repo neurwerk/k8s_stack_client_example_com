@@ -1,14 +1,23 @@
 authKeycloak:
-  adminUser: admin
-  realmDisplayName: "Example Client"
-  initialAdminUsername: platform-admin
-  initialAdminEmail: admin@example.com
-  initialAdminFirstName: Platform
-  initialAdminLastName: Administrator
+  adminUser: admin # Bootstrap administration account name; password is delivered separately.
+  realmDisplayName: Example Company # Synthetic organization name displayed at login.
+  loginTheme: client-brand # Shared platform login theme.
+  emailTheme: client-brand # Shared platform email theme.
+  branding:
+    enabled: true # Use the synthetic example logo; replace the SVG with your approved company logo.
+    logoConfigMapName: keycloak-branding-logo # Namespace-local copy shared with maintenance pages.
+    logoFormat: svg # Keep the format aligned with the ConfigMap's company-logo.svg key.
+  initialAdminUsername: example-admin # Initial local platform administrator username.
+  initialAdminEmail: admin@example.com # Operator-controlled recovery/admin mailbox.
+  initialAdminFirstName: Example # Display name only; never copy a real person's data into this template.
+  initialAdminLastName: Admin # Display name for the example administrator.
+  initialAdminGroups: '["/access/neurwerk-platform-admins","/access/neurwerk-llm-all-users","/access/neurwerk-mcp-all-users"]' # Explicit initial administrator memberships.
   smtp:
-    enabled: false
-    host: smtp.example.test
-    port: 465
-    from: no-reply@example.com
-    ssl: true
-    starttls: false
+    enabled: true # Enable identity email; provision SMTP credentials through OpenBao.
+    host: smtp.example.com # Replace with your approved SMTP relay.
+    port: 465 # Implicit TLS SMTP port.
+    from: no-reply@example.com # Verified sender address on your own domain.
+    ssl: true # Require implicit TLS for port 465.
+    starttls: false # Use either implicit TLS or STARTTLS, matching your relay.
+externalGateway:
+  enabled: true # Publish the identity hostname through the edge gateway.

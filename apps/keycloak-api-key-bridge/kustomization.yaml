@@ -3,7 +3,10 @@ kind: Kustomization
 namespace: auth-keycloak-api-key-bridge
 generatorOptions:
   disableNameSuffixHash: true
+  labels: {reconcile.fluxcd.io/watch: Enabled}
 configMapGenerator:
+  - name: keycloak-product-values
+    files: [values.yaml=../keycloak/values.yaml]
   - name: client-values
     files:
       - values.yaml=../../config/client.yaml

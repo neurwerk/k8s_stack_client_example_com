@@ -1,2 +1,11 @@
-# Configured OpenRouter models; no optional add-on services are selected.
-openrouter.ai /api/v1/models
+# Replace example.com with your own domain before running connection checks.
+https://auth.example.com
+https://ai-api.example.com
+https://studio.example.com
+https://librechat.example.com
+https://admin.librechat.example.com
+https://chat.example.com
+https://dify.example.com
+https://pipecat.example.com
+https://langfuse.example.com
+https://status.example.com

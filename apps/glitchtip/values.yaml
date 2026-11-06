@@ -1,0 +1,119 @@
+glitchtip:
+  enabled: true # Enable the reporting product; keep config/client.yaml aligned.
+  mcpEnabled: true # Offer reporting tools through the managed MCP route.
+  domain: https://glitchtip.example.com # Private management origin reachable through your tailnet.
+  fromEmail: no-reply@example.com # Verified SMTP sender.
+  storage:
+    size: 5Gi # Persistent application storage capacity.
+  gateway:
+    status:
+      enabled: true # Expose only the selected status page publicly.
+      hostname: status.example.com # Public status-page hostname.
+      pagePath: /status-pages/example/example/ # Replace with the path created by your native status-page setup.
+    ui:
+      enabled: true # Enable internal TLS for the private management interface.
+      hostname: glitchtip.example.com # Resolve privately to the managed tailnet proxy.
+      tailscale:
+        expose: true # Publish the private UI on the tailnet, not the public edge gateway.
+        hostname: glitchtip-example # Tailnet proxy device name.
+        tags: [tag:k8s-glitchtip-ui] # Dedicated UI tag; separate from Kubernetes API access.
+  smtp:
+    host: smtp.example.com # Your approved SMTP relay.
+    port: 465 # Implicit TLS SMTP port.
+    cidrs: [192.0.2.25/32] # Replace this documentation IP with the relay's approved addresses.
+  uptimeEnabled: true # Run the configured uptime monitors.
+  uptimeAllowPrivateIPs: true # Needed for the explicit local inference monitor below.
+  uptime:
+    cidrs: [192.0.2.80/32] # Replace with your public edge addresses; local inference uses its scoped policy.
+    ports: [443] # Public endpoint probes use HTTPS.
+  provisioning:
+    enabled: false # For initial setup, enable this with both adapter flags off; disable again before adapter activation.
+    config:
+      organization: {slug: example, name: Example Company} # Synthetic organization identity.
+      team: {slug: example} # Initial native team.
+      project: {slug: example, name: Example Platform} # Error-reporting project.
+      alert:
+        name: Application failures # Native alert label.
+        timespanMinutes: 1 # Error aggregation window.
+        alertRecipients: [{recipientType: email}] # Native project membership supplies recipients.
+      monitors: # Seconds, expected HTTP status and optional first-response-chunk checks.
+        - name: Identity
+          url: https://auth.example.com/realms/example/.well-known/openid-configuration
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '"issuer":"https://auth.example.com/realms/example"'
+          allowPrivateIPs: false
+        - name: Studio
+          url: https://studio.example.com/
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '<title>neurwerk studio</title>'
+          allowPrivateIPs: false
+        - name: Dify
+          url: https://dify.example.com/
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '<title>Sign in - Dify</title>'
+          allowPrivateIPs: false
+        - name: LibreChat
+          url: https://librechat.example.com/health
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: OK
+          allowPrivateIPs: false
+        - name: LibreChat Admin
+          url: https://admin.librechat.example.com/
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '<title>LibreChat Admin Panel</title>'
+          allowPrivateIPs: false
+        - name: Open WebUI
+          url: https://chat.example.com/health
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '"status":true'
+          allowPrivateIPs: false
+        - name: Langfuse
+          url: https://langfuse.example.com/api/public/health
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '"status":"OK"'
+          allowPrivateIPs: false
+        - name: File Storage
+          url: https://files.librechat.example.com/
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '' # Streaming responses may not contain the expected body in their first chunk.
+          allowPrivateIPs: false
+        - name: Status Page
+          url: https://status.example.com/
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '' # The native status page may stream its content.
+          allowPrivateIPs: false
+        - name: Ollama
+          url: http://ollama.inference.svc.cluster.local:11434/v1/models
+          interval: 60
+          timeout: 10
+          expectedStatus: 200
+          expectedBody: '"llama3.2:3b"'
+          allowPrivateIPs: true # Only this monitor targets the approved local inference network.
+      statusPage:
+        name: Example Platform # Public page display name.
+        isPublic: true # Publish only the selected monitors.
+        monitorNames: [Identity, Studio, Dify, LibreChat, Open WebUI, Langfuse, File Storage] # Exclude private management and inference details.
+  adapter:
+    enabled: true # For first setup, keep both adapter flags off until the private DSN and CA are ready.
+    environment: example # Reporting environment label; choose a stable non-secret value.
+    initialStartAt: '2026-11-06T00:00:00Z' # Replace with your initial activation boundary; retained state owns later cursors.
+    storage:
+      size: 16Gi # Persistent queue/cursor capacity.

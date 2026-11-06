@@ -1,4 +1,9 @@
-# Client-level overrides for OpenSearch
 opensearch:
   persistence:
-    size: 20Gi
+    size: 20Gi # Persistent log index capacity; size for your retention and ingest rate.
+  opensearchJavaOpts: '-Xms4g -Xmx4g' # Equal JVM initial/maximum heap; leave native-memory headroom.
+  resources:
+    requests: {cpu: '1', memory: 4Gi} # Reserve at least the configured JVM heap.
+    limits: {cpu: '4', memory: 8Gi} # Leave memory above the heap for native buffers.
+monitorOpensearchReporting:
+  enabled: false # Use the selected GlitchTip reporting path.

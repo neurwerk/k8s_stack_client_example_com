@@ -3,6 +3,10 @@ kind: Kustomization
 resources:
   - cluster-identity.yaml
   - platform-source.yaml
+  - addon-dify-source.yaml
+  - addon-librechat-source.yaml
+  - addon-open-webui-source.yaml
+  - addon-pipecat-source.yaml
   - addon-selection.yaml
   - namespaces.yaml
   - client-values.yaml

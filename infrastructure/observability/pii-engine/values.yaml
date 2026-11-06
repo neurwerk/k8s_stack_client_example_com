@@ -1,1 +1,11 @@
-monitorPiiEngine: {}
+monitorPiiEngine:
+  ner:
+    mode: local # Run named-entity recognition locally, without another LLM binding.
+    languageModels:
+      de: german-spacy # German recognizer profile below.
+      en: english-spacy # English recognizer profile below.
+    models:
+      german-spacy:
+        profile: spacy-de-sm-v1 # Packaged German spaCy recognizer.
+      english-spacy:
+        profile: spacy-en-sm-v1 # Packaged English spaCy recognizer.

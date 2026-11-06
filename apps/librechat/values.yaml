@@ -1,192 +1,133 @@
-# Client-owned configuration shared by the core and Code Interpreter releases.
 frontendLibrechat:
-  app:
-    replicas: 1
-    imagePersistence:
-      size: 10Gi
-      storageClassName: infra-rook-ceph-rbd
-    resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: "1"
-        memory: 1Gi
-  adminPanel:
-    replicas: 1
-    resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+  costs:
+    enabled: true # Show usage costs from the shared gateway pricing catalog.
+    contextWindows: # Token budgets for the selected chat-completion models; match actual backend limits.
+      remote/openrouter/deepseek/deepseek-v4.1-flash-1017: 1048576
+      remote/deepseek/v4.1-flash: 1048576
+      local/llama3.2-3b: 127500
+  documentAttachments:
+    enabled: true # Send documents through the gateway's extraction and privacy policy.
+    imagesEnabled: true # Extract image text before passing it to chat models.
+  memory:
+    enabled: true # Enable LibreChat memory support.
+    agent:
+      enabled: true # Use the configured local model for memory operations.
+      model: local/llama3.2-3b # Must be an approved model ID.
+  speech:
+    stt:
+      enabled: true # Enable speech transcription using a separate speech service.
+      provider: openai-compatible # Speech service protocol, not another chat-model binding.
+      url: https://10.0.2.30:8000/v1/audio/transcriptions # Synthetic RFC1918 endpoint; replace with your approved speech-service IP, port and valid TLS certificate.
+      model: Systran/faster-whisper-large-v3 # Transcription model installed on that service.
+      auth:
+        enabled: true # Deliver the speech API key through the selected add-on's OpenBao records.
+    tts:
+      enabled: false # Enable only after selecting and configuring a synthesis service.
   agentGateway:
-    streaming: true
+    defaultModel: local/llama3.2-3b # Default chat-completion model.
+    streaming: true # Stream model responses to the chat UI.
+  app:
+    replicas: 1 # Number of application replicas.
+    imagePersistence:
+      size: 10Gi # Persistent attachment storage capacity.
+      storageClassName: infra-rook-ceph-rbd # Ceph block-storage class.
+    resources:
+      requests: {cpu: 250m, memory: 512Mi} # Resources reserved per replica.
+      limits: {cpu: 1000m, memory: 1Gi} # Maximum resources per replica.
+  adminPanel:
+    replicas: 1 # Number of admin-panel replicas.
+    resources:
+      requests: {cpu: 50m, memory: 128Mi} # Resources reserved per replica.
+      limits: {cpu: 500m, memory: 512Mi} # Maximum resources per replica.
   codeInterpreter:
-    # Enable only when the optional platform release package is composed.
-    enabled: false
-    url: http://librechat-code-interpreter-api.librechat-code-interpreter.svc.cluster.local:3112/v1
-    jwtAlgorithm: EdDSA
-    jwtAudience: codeapi
-    jwtIssuer: librechat
-    jwtKeyId: librechat-code-interpreter-v1
-    jwtSingleTenantId: librechat
-    namespace: librechat-code-interpreter
-    podSelector:
-      app.kubernetes.io/name: librechat-code-interpreter-api
-    port: 3112
+    enabled: false # Requires a separately selected execution package and dedicated nodes.
+    namespace: librechat-code-interpreter # Namespace used if the optional execution package is adopted.
+    url: http://librechat-code-interpreter-api.librechat-code-interpreter.svc.cluster.local:3112/v1 # Internal sandbox API.
   meilisearch:
-    replicas: 1
+    replicas: 1 # Search-service replicas.
     persistence:
-      size: 10Gi
-      storageClassName: infra-rook-ceph-rbd
+      size: 10Gi # Search index capacity.
+      storageClassName: infra-rook-ceph-rbd # Persistent block-storage class.
     resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: "1"
-        memory: 1Gi
+      requests: {cpu: 50m, memory: 64Mi} # Reserved search resources.
+      limits: {cpu: 200m, memory: 256Mi} # Maximum search resources.
   objectStorage:
-    enabled: true
-    storageClassName: infra-rook-ceph-object-bucket
+    enabled: true # Store shared files in the selected Ceph object store.
+    storageClassName: infra-rook-ceph-object-bucket # Bucket provisioner class.
   rag:
-    # Enable only with a configured embedding backend and the optional release package.
-    enabled: false
-    useFullContext: false
+    enabled: false # Requires a separate embedding backend and optional release package.
   ragApi:
-    replicas: 1
+    replicas: 1 # Replica count if the optional RAG package is selected.
     image:
-      variant: lite
+      variant: lite # Lightweight runtime without a bundled embedding model.
     embeddings:
-      provider: openai
-      model: text-embedding-3-small
-      # Keep blank until AgentGateway exposes a dedicated embedding route.
-      openaiBaseUrl: ""
-    externalHttpsEgress:
-      enabled: false
+      openaiBaseUrl: '' # Supply an approved embedding endpoint before enabling RAG.
     resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: "1"
-        memory: 2Gi
+      requests: {cpu: 250m, memory: 512Mi} # Reserved resources for an enabled RAG API.
+      limits: {cpu: 1000m, memory: 2Gi} # Maximum resources for an enabled RAG API.
   valkey:
-    replicas: 1
+    replicas: 1 # Cache replicas.
     persistence:
-      size: 5Gi
-      storageClassName: infra-rook-ceph-rbd
+      size: 5Gi # Persistent cache capacity.
+      storageClassName: infra-rook-ceph-rbd # Persistent block-storage class.
     resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-
-frontendLibrechatCodeInterpreter:
-  hardenedSandboxMode: true
-  ptcMode: replay
-  auth:
-    provider: librechat-jwt
-    issuer: librechat
-    audience: codeapi
-    allowedAlgorithms: EdDSA
-    keyId: librechat-code-interpreter-v1
-    singleTenantId: librechat
-  networkPolicy:
-    librechatNamespace: frontend-librechat
-    librechatPodLabels:
-      app.kubernetes.io/name: frontend-librechat
+      requests: {cpu: 50m, memory: 64Mi} # Reserved cache resources.
+      limits: {cpu: 200m, memory: 128Mi} # Maximum cache resources.
+frontendLibrechatCodeInterpreter: # Sizing template for a separately adopted execution package.
   objectStorage:
-    storageClassName: infra-rook-ceph-object-bucket
+    storageClassName: infra-rook-ceph-object-bucket # Sandbox file bucket provisioner.
   api:
-    replicas: 1
+    replicas: 2 # Sandbox API replicas.
     resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+      requests: {cpu: 100m, memory: 256Mi} # Reserved API resources.
+      limits: {cpu: 500m, memory: 512Mi} # Maximum API resources.
   egressGateway:
-    replicas: 1
+    replicas: 2 # Isolated egress-proxy replicas.
     resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        cpu: 250m
-        memory: 256Mi
+      requests: {cpu: 50m, memory: 128Mi} # Reserved proxy resources.
+      limits: {cpu: 250m, memory: 256Mi} # Maximum proxy resources.
   fileServer:
-    replicas: 1
+    replicas: 1 # Sandbox file-service replicas.
     resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        cpu: 250m
-        memory: 256Mi
-  toolCallServer:
-    replicas: 1
-    resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        cpu: 250m
-        memory: 256Mi
-  valkey:
-    persistence:
-      size: 5Gi
-      storageClassName: infra-rook-ceph-rbd
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-  worker:
-    replicas: 1
-    resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: 1000m
-        memory: 1Gi
-  sandbox:
-    replicas: 1
-    resources:
-      requests:
-        cpu: 500m
-        memory: 1Gi
-      limits:
-        cpu: 2000m
-        memory: 3Gi
-  scheduling:
-    nodeSelector:
-      code-interpreter.neurwerk.com/dedicated: "true"
-    tolerations:
-      - key: code-interpreter.neurwerk.com/dedicated
-        operator: Equal
-        value: "true"
-        effect: NoSchedule
+      requests: {cpu: 50m, memory: 128Mi} # Reserved file-service resources.
+      limits: {cpu: 250m, memory: 256Mi} # Maximum file-service resources.
   packages:
     persistence:
-      size: 20Gi
-      storageClassName: infra-rook-ceph-rbd
+      size: 20Gi # Sandbox package-cache capacity.
+      storageClassName: infra-rook-ceph-rbd # Persistent cache storage class.
     initJob:
       resources:
-        requests:
-          cpu: 500m
-          memory: 1Gi
-        limits:
-          cpu: 2000m
-          memory: 4Gi
-
+        requests: {cpu: 500m, memory: 1Gi} # Reserved package initialization resources.
+        limits: {cpu: 2000m, memory: 4Gi} # Maximum package initialization resources.
+  sandbox:
+    replicas: 1 # Number of isolated execution sandboxes.
+    resources:
+      requests: {cpu: 500m, memory: 1Gi} # Reserved sandbox resources.
+      limits: {cpu: 2000m, memory: 3Gi} # Maximum sandbox resources.
+  scheduling:
+    nodeSelector:
+      code-interpreter.neurwerk.com/dedicated: 'true' # Schedule only on your dedicated execution nodes.
+    tolerations:
+      - key: code-interpreter.neurwerk.com/dedicated # Match the dedicated-node taint.
+        operator: Equal # Require an exact taint-value match.
+        value: 'true' # Dedicated execution node marker.
+        effect: NoSchedule # Tolerate only the dedicated scheduling restriction.
+  toolCallServer:
+    replicas: 1 # Tool-call service replicas.
+    resources:
+      requests: {cpu: 50m, memory: 128Mi} # Reserved tool-call resources.
+      limits: {cpu: 250m, memory: 256Mi} # Maximum tool-call resources.
+  valkey:
+    persistence:
+      size: 5Gi # Sandbox queue capacity.
+      storageClassName: infra-rook-ceph-rbd # Persistent queue storage class.
+    resources:
+      requests: {cpu: 100m, memory: 128Mi} # Reserved queue resources.
+      limits: {cpu: 500m, memory: 512Mi} # Maximum queue resources.
+  worker:
+    replicas: 2 # Sandbox worker replicas.
+    resources:
+      requests: {cpu: 250m, memory: 512Mi} # Reserved worker resources.
+      limits: {cpu: 1000m, memory: 1Gi} # Maximum worker resources.
 externalGateway:
-  enabled: true
+  enabled: true # Publish LibreChat through the canonical edge gateway.

@@ -4,5 +4,13 @@
   {"package_name": "k8s-stack-agentgateway-extproc", "repository": "neurwerk/k8s_stack_agentgateway_extproc"},
   {"package_name": "k8s-stack-pii-engine", "repository": "neurwerk/k8s_stack_pii_engine", "stable_tags_only": true},
   {"package_name": "k8s-stack-keycloak-api-key-bridge", "repository": "neurwerk/k8s_stack_keycloak_api_key_bridge"},
-  {"package_name": "k8s-stack-tooling", "repository": "neurwerk/k8s_stack_tooling"}
+  {"package_name": "k8s-stack-tooling", "repository": "neurwerk/k8s_stack_tooling"},
+  {"package_name": "k8s-stack-keycloak-theme", "repository": "neurwerk/k8s_stack_keycloak_theme"},
+  {"package_name": "k8s-stack-addon-dify-api", "repository": "neurwerk/k8s_stack_addon_dify"},
+  {"package_name": "k8s-stack-addon-dify-web", "repository": "neurwerk/k8s_stack_addon_dify"},
+  {"package_name": "k8s-stack-addon-dify-tooling", "repository": "neurwerk/k8s_stack_addon_dify"},
+  {"package_name": "k8s-stack-addon-librechat-tooling", "repository": "neurwerk/k8s_stack_addon_librechat"},
+  {"package_name": "k8s-stack-addon-open-webui-tooling", "repository": "neurwerk/k8s_stack_addon_open_webui"},
+  {"package_name": "k8s-stack-addon-pipecat", "repository": "neurwerk/k8s_stack_addon_pipecat"},
+  {"package_name": "k8s-stack-addon-pipecat-tooling", "repository": "neurwerk/k8s_stack_addon_pipecat"}
 ]

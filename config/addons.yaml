@@ -1,19 +1,114 @@
 apiVersion: addons.neurwerk.com/v1alpha2
 kind: AddonSelection
-baseSourceRef:
-  kind: GitRepository
-  namespace: flux-system
-  name: k8s-stack
-# This example selects only the exact reviewed alpha Base source, not a stable tag.
-addons: []
-# Synthetic entry shape for a future optional product (not selected):
-# - id: sample-chat
-#   sourceRef: {kind: GitRepository, namespace: flux-system, name: sample-chat-addon}
-#   features: {speech: false}
-#   approvedReaders:
-#     - role: sample-chat
-#       namespace: sample-chat
-#       serviceAccount: sample-chat-external-secrets
-#       audience: openbao
-#       records: [runtime]
-# Add its Flux source and use its verified manifest's exact reader records first.
+baseSourceRef: {kind: GitRepository, namespace: flux-system, name: k8s-stack} # Base pin lives in platform-source.yaml.
+# Approvals must match the exact selected release manifests; regenerate addon-selection.yaml after changes.
+addons:
+  - id: dify # Public workflow and AI application builder.
+    sourceRef: {kind: GitRepository, namespace: flux-system, name: dify-addon}
+    features: {} # No additional credential-bearing feature switches.
+    approvedReaders: # Exact record access granted to each workload identity.
+      - role: addon-dify-runtime
+        namespace: frontend-dify
+        serviceAccount: frontend-dify-external-secrets
+        audience: openbao
+        records: [database, browser, runtime, admin, gateway-key]
+      - role: infra-postgres-operations
+        namespace: infra-postgres-operations
+        serviceAccount: infra-postgres-operations-external-secrets
+        audience: openbao
+        records: [database]
+      - role: auth-keycloak
+        namespace: auth-keycloak
+        serviceAccount: auth-keycloak-external-secrets
+        audience: openbao
+        records: [browser, service]
+      - role: auth-keycloak-api-key-bridge
+        namespace: auth-keycloak-api-key-bridge
+        serviceAccount: auth-keycloak-api-key-bridge-external-secrets
+        audience: openbao
+        records: [gateway-verifiers]
+    approvedIdentities: # Browser access and gateway service access are approved separately.
+      - id: browser
+        mode: browser
+        clientId: dify
+        secret: {record: browser, field: difyOidcClientSecret}
+        browserSettings: {namespace: auth-keycloak, settings: dify-oidc-settings, approval: dify-oidc-approval-values}
+      - id: gateway-service
+        mode: service
+        clientId: dify-agentgateway
+        secret: {record: service, field: difyAgentgatewayClientSecret}
+        serviceSettings: {namespace: auth-keycloak, settings: keycloak-product-values, approval: dify-service-approval-values}
+  - id: librechat # Public chat application and administration panel.
+    sourceRef: {kind: GitRepository, namespace: flux-system, name: librechat-addon}
+    features: {stt-auth: true, tts-auth: false} # Match the speech authentication switches in product values.
+    approvedReaders:
+      - role: addon-librechat-runtime
+        namespace: frontend-librechat
+        serviceAccount: frontend-librechat-external-secrets
+        audience: openbao
+        records: [runtime, database, oidc, speech]
+      - role: infra-postgres-operations
+        namespace: infra-postgres-operations
+        serviceAccount: infra-postgres-operations-external-secrets
+        audience: openbao
+        records: [database]
+      - role: auth-keycloak
+        namespace: auth-keycloak
+        serviceAccount: auth-keycloak-external-secrets
+        audience: openbao
+        records: [oidc]
+    approvedIdentities:
+      - id: browser
+        mode: browser
+        clientId: librechat
+        secret: {record: oidc, field: openidClientSecret}
+        browserSettings: {namespace: auth-keycloak, settings: librechat-oidc-settings, approval: librechat-oidc-approval-values}
+  - id: open-webui # Public alternative chat UI.
+    sourceRef: {kind: GitRepository, namespace: flux-system, name: open-webui-addon}
+    features: {} # Only the standard browser/runtime records are selected.
+    approvedReaders:
+      - role: infra-postgres-operations
+        namespace: infra-postgres-operations
+        serviceAccount: infra-postgres-operations-external-secrets
+        audience: openbao
+        records: [database]
+      - role: auth-keycloak
+        namespace: auth-keycloak
+        serviceAccount: auth-keycloak-external-secrets
+        audience: openbao
+        records: [oidc]
+      - role: addon-open-webui-runtime
+        namespace: frontend-open-webui
+        serviceAccount: frontend-open-webui-external-secrets
+        audience: openbao
+        records: [database, oidc, runtime]
+    approvedIdentities:
+      - id: browser
+        mode: browser
+        clientId: open-webui
+        secret: {record: oidc, field: clientSecret}
+        browserSettings: {namespace: auth-keycloak, settings: open-webui-oidc-settings, approval: open-webui-oidc-approval-values}
+  - id: pipecat # Public application/voice-bot runtime.
+    sourceRef: {kind: GitRepository, namespace: flux-system, name: pipecat-addon}
+    features: {oidc: true, managed-oidc: true, turn: false, managed-turn: false} # Add TURN only with its explicit credential approval.
+    instances:
+      - id: simple-chatbot # Match the product's bot ID.
+        recipe: bot # Standard bot recipe from the selected manifest.
+        features: {runtime: false, gateway: false, stt: false, tts: false} # No managed provider keys for this protected, user-authenticated bot.
+    approvedReaders:
+      - role: addon-pipecat-runtime
+        namespace: pipecat
+        serviceAccount: pipecat-external-secrets
+        audience: openbao
+        records: [oidc]
+      - role: auth-keycloak
+        namespace: auth-keycloak
+        serviceAccount: auth-keycloak-external-secrets
+        audience: openbao
+        records: [oidc]
+    approvedIdentities:
+      - id: browser
+        mode: browser
+        clientId: pipecat
+        secret: {record: oidc, field: clientSecret}
+        browserSettings: {namespace: auth-keycloak, settings: pipecat-oidc-settings, approval: pipecat-oidc-approval-values}

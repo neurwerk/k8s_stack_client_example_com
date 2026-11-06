@@ -1,2 +1,5 @@
-# ── Example client override for monitor-agentgateway-extproc ─────────────────
-# The adapter has no policy configuration. Policy is owned by monitorPiiEngine.
+# Processing policy is owned by monitorPiiEngine in config/client.yaml.
+monitorAgentgatewayExtproc:
+  logging:
+    level: INFO # Use DEBUG only while investigating a specific issue.
+    errorLevel: info # Error-detail verbosity: info for normal operation, debug for diagnosis.

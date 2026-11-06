@@ -1,8 +1,9 @@
-# Non-secret Langfuse initialization identity for this client.
 monitorLangfuseWrapper:
-  initOrgId: "langfuse-org"
-  initOrgName: "Example Client"
-  initProjectId: "default-project"
-  initProjectName: "Default Project"
-  initUserEmail: "admin@example.com"
-  initUserName: "Admin"
+  initOrgId: example.com # Stable organization ID; choose once before initialization.
+  initOrgName: Example Company # Organization display name.
+  initProjectId: default-project # Initial project ID shared with platform tracing.
+  initProjectName: Neurwerk.Base # Initial project display name.
+  initUserEmail: admin@example.com # Initial administrator mailbox.
+  initUserName: Admin # Initial administrator display name.
+externalGateway:
+  enabled: true # Publish the tracing dashboard through the edge gateway.

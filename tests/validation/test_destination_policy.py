@@ -31,11 +31,46 @@ class DestinationPolicyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = load_yaml("config/client.yaml")
         gateway = load_yaml("infrastructure/networking/agentgateway/values.yaml")
-        self.values = merge_values(self.client, gateway)
-        self.models = self.values["guardrails"]["llmPolicyEngine"].get(
-            "models", []
+        self.values = merge_values(
+            merge_values(load_yaml("config/openrouter-catalog.yaml"), self.client), gateway
         )
-        self.servers = self.values["mcp"].get("servers", [])
+        explicit = self.values["guardrails"]["llmPolicyEngine"].get("models", [])
+        catalog = self.values.get("openrouterCatalog", {})
+        entries = catalog.get("models", []) if catalog.get("enabled") else []
+        for definitions in (explicit, entries):
+            ids = [model["name"] for model in definitions]
+            self.assertEqual(len(ids), len(set(ids)), "duplicate catalog definition")
+        # Product entries intentionally override matching OpenRouter catalog entries.
+        definitions = {model["name"]: model for model in entries}
+        definitions.update({model["name"]: model for model in explicit})
+        self.bindings = [
+            binding
+            for group in (
+                "self-hosted-api-providers",
+                "external-api-providers",
+                "external-subscription-providers",
+            )
+            for binding in self.values.get(group, [])
+            if binding.get("enabled") is True
+        ]
+        self.models = []
+        for binding in self.bindings:
+            for name in binding.get("catalogModels", []):
+                self.assertIn(name, definitions, "binding references an unknown model")
+                self.models.append(definitions[name])
+            self.models.extend(binding.get("models", []))
+        mcp = self.values.get("mcp-servers", {})
+        self.servers = []
+        if mcp.get("enabled") is True:
+            self.servers.extend(
+                {**server, "name": name}
+                for name, server in mcp.get("catalog", {}).get("presets", {}).items()
+                if server.get("enabled") is True
+            )
+            self.servers.extend(
+                server for server in mcp.get("catalog", {}).get("custom", [])
+                if server.get("enabled") is True
+            )
 
     def test_destinations_have_unique_ids_and_explicit_privacy_policy(self) -> None:
         for catalog_name, destinations in (
@@ -58,10 +93,23 @@ class DestinationPolicyTests(unittest.TestCase):
         allowed = {"llm:invoke"}
         allowed.update(f'model:{model["name"]}:invoke' for model in self.models)
         allowed.update(f'mcp:{server["name"]}:invoke' for server in self.servers)
+        allowed.update(
+            f'provider:{binding["providerId"]}:global-use'
+            for binding in self.bindings
+            if "global" in binding.get("credentialSources", [])
+        )
         permission_sets = {
             "agentgatewayClientRoles": auth.get("agentgatewayClientRoles", []),
+            "difyAgentgatewayClientRoles": auth.get("difyAgentgatewayClientRoles", []),
             **auth.get("agentgatewayAccessGroups", {}),
         }
+        for path in (ROOT / "apps").glob("**/*approval/values.yaml"):
+            values = load_yaml(str(path.relative_to(ROOT)))
+            for section in ("clientApproval", "serviceApproval", "authentication"):
+                if section in values:
+                    permission_sets[f"{path.relative_to(ROOT)}:{section}"] = values[
+                        section
+                    ].get("gatewayPermissions", [])
 
         for owner, permissions in permission_sets.items():
             with self.subTest(owner=owner):
@@ -70,25 +118,28 @@ class DestinationPolicyTests(unittest.TestCase):
                 self.assertLessEqual(set(permissions), allowed)
 
     def test_privacy_reroutes_have_a_local_fallback(self) -> None:
-        rerouted = [model for model in self.models if model.get("piiReroute") is True]
+        rerouted = [binding for binding in self.bindings if binding.get("localReroute")]
         if not rerouted:
             return
 
         engine = self.values["guardrails"]["llmPolicyEngine"]
-        local_target = engine.get("localTarget")
         self.assertIs(engine.get("enabled"), True)
-        self.assertIsInstance(local_target, dict)
-        self.assertTrue(local_target.get("name"))
-        self.assertTrue(local_target.get("model"))
-        self.assertIs(
-            self.values.get("infraAgentgatewayWrapper", {})
-            .get("llamacpp", {})
-            .get("enabled"),
-            True,
-        )
-        for model in rerouted:
-            with self.subTest(model=model["name"]):
-                self.assertIs(model.get("piiEnabled"), True)
+        local_targets = {
+            name
+            for binding in self.values.get("self-hosted-api-providers", [])
+            if binding.get("enabled") is True
+            and binding.get("credentialSources") == ["none"]
+            for name in binding.get("catalogModels", [])
+        }
+        models = {model["name"]: model for model in self.models}
+        for binding in rerouted:
+            with self.subTest(binding=binding["id"]):
+                target = binding["localReroute"]
+                self.assertIn(target, local_targets)
+                self.assertIn(target, models)
+                self.assertIs(models[target].get("local"), True)
+                for name in binding.get("catalogModels", []):
+                    self.assertIs(models[name].get("piiEnabled"), True)
 
 
 if __name__ == "__main__":

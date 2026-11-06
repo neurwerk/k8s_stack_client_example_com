@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: maintenance
+generatorOptions: {disableNameSuffixHash: true}
+configMapGenerator:
+  - name: keycloak-branding-logo
+    files: [company-logo.svg=../keycloak/company-logo.svg]
+  - name: client-values
+    files: [values.yaml=../../config/client.yaml]
+  - name: maintenance-product-values
+    files: [values.yaml=../keycloak/values.yaml]

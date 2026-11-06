@@ -1,15 +1,80 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
-metadata:
-  name: namespaces
-  namespace: flux-system
+metadata: {name: namespaces, namespace: flux-system}
 spec:
   interval: 1h
   path: ./releases/namespaces
+  # The dedicated ContextForge stage owns these resources.
+  patches:
+    - target: {kind: Namespace, name: contextforge}
+      patch: |
+        apiVersion: v1
+        kind: Namespace
+        metadata: {name: contextforge}
+        $patch: delete
+    - target: {kind: NetworkPolicy, name: default-deny, namespace: contextforge}
+      patch: |
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata: {name: default-deny, namespace: contextforge}
+        $patch: delete
   timeout: 5m
   wait: true
   prune: true
-  sourceRef:
-    kind: GitRepository
-    name: k8s-stack
-    namespace: flux-system
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: pipecat-namespaces, namespace: flux-system}
+spec:
+  interval: 10m
+  path: ./releases/namespaces/pipecat
+  timeout: 5m
+  wait: true
+  prune: true
+  dependsOn: [{name: namespaces}]
+  sourceRef: {kind: GitRepository, name: pipecat-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: contextforge-namespaces, namespace: flux-system}
+spec:
+  interval: 1h
+  path: ./releases/namespaces/contextforge
+  timeout: 5m
+  wait: true
+  prune: true
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: dify-namespaces, namespace: flux-system}
+spec:
+  interval: 1h
+  path: ./releases/namespaces/dify
+  timeout: 5m
+  wait: true
+  prune: true
+  sourceRef: {kind: GitRepository, name: dify-addon, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: maintenance-namespaces, namespace: flux-system}
+spec:
+  interval: 1h
+  path: ./releases/namespaces/maintenance
+  timeout: 5m
+  wait: true
+  prune: true
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: docling-namespaces, namespace: flux-system}
+spec:
+  interval: 1h
+  path: ./releases/namespaces/docling
+  timeout: 5m
+  wait: true
+  prune: true
+  sourceRef: {kind: GitRepository, name: k8s-stack, namespace: flux-system}

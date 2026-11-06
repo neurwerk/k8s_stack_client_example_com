@@ -1,0 +1,24 @@
+contextforge:
+  enabled: true # Enable the private MCP management service.
+  platformAdminEmail: contextforge-admin@example.com # Dedicated platform administrator identity.
+  tls:
+    enabled: true # Verify internal TLS between the gateway and ContextForge.
+    existingSecret: contextforge-tls # Certificate delivered by cert-manager.
+  trustedProxy:
+    enabled: true # Accept only the authenticated platform proxy identity.
+    defaultUserRole: neurwerk-mcp-user # Default role for provisioned personal accounts.
+    defaultTeamMemberRole: neurwerk-mcp-invoke # Default role for personal team membership.
+    studioOrigin: https://studio.example.com # Exact trusted Studio browser origin.
+  setup:
+    enabled: true # Register the selected MCP integrations and Studio service account.
+    serviceAccountEmail: contextforge-studio@example.com # Match config/client.yaml.
+    adminDiscovery:
+      enabled: true # Enable authorized administrator tool discovery.
+    kubernetesApiEgress: # Replace both addresses with your Service VIP and control-plane address.
+      - {cidr: 10.96.0.1/32, port: 443}
+      - {cidr: 192.0.2.10/32, port: 6443}
+  ssrfAllowedNetworks: [10.96.0.0/12] # Replace with your Kubernetes Service CIDR.
+  providerEgress:
+    - cidr: 0.0.0.0/0 # Public provider destinations only.
+      port: 443 # Require HTTPS for public providers.
+      except: [0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4] # Exclude private and reserved networks.

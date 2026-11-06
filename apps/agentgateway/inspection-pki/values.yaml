@@ -1,0 +1,4 @@
+agentgateway:
+  inspection:
+    monitoring:
+      enabled: true # Alert on inspection certificate expiry and renewal failures.

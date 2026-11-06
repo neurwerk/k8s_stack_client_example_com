@@ -1,1 +1,19 @@
-# No product-specific overrides.
+frontendStudio:
+  api:
+    usageTimezone: Europe/Berlin # Time zone used for usage totals and date boundaries.
+    gateway:
+      enabled: true # Expose the generated gateway catalog and endpoint setup.
+      catalogConfigMapName: agentgateway-catalog-config-map # Chart-generated model/MCP catalog.
+      statusConfigMapName: '' # Leave empty when no separate status projection is supplied.
+      trust:
+        enabled: true # Offer the public inspection trust bundle to authorized users.
+        configMapName: agentgateway-inspection-trust-config-map # Output of inspection-trust publication.
+        requiredVersion: '' # Set to your published snapshot version after initial trust publication.
+    llmLogs:
+      enabled: true # Enable authorized model-usage and trace views.
+    mcpSetup:
+      kubernetesApiEgress: # Match your API Service VIP and control-plane endpoint.
+        - {cidr: 10.96.0.1/32, port: 443}
+        - {cidr: 192.0.2.10/32, port: 6443}
+externalGateway:
+  enabled: true # Publish Studio through the canonical edge gateway.
