@@ -1,0 +1,24 @@
+frontendOpenWebui:
+  agentGateway:
+    defaultModel: local/llama3.2-3b # Select one of the approved chat-completion models.
+  app:
+    replicas: 1 # Number of application replicas.
+    persistence:
+      size: 10Gi # Persistent application data capacity.
+      storageClassName: infra-rook-ceph-rbd # Existing Ceph block-storage class.
+    resources:
+      requests: {cpu: 250m, memory: 1Gi} # Reserved resources per replica.
+      limits: {cpu: '2', memory: 4Gi} # Maximum resources per replica.
+  documentAttachments:
+    enabled: false # This add-on's upload path is not yet integrated with gateway document inspection.
+  mcp:
+    enabled: true # Offer approved MCP tools through the gateway.
+    servers: [context7] # Must be included in this client's approved gateway bindings.
+  costs:
+    enabled: false # This integration does not provide the LibreChat cost UI.
+  rag:
+    enabled: false # Requires a separately configured embedding backend.
+  codeInterpreter:
+    enabled: false # No separate execution sandbox is selected for this product.
+  directConnections:
+    enabled: false # Keep model requests on the authenticated platform gateway.

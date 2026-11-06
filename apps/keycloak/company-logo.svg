@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="80" viewBox="0 0 360 80" role="img" aria-label="Example Company">
+  <rect width="80" height="80" rx="16" fill="#2563eb"/>
+  <path d="M24 22h34v8H33v10h21v8H33v10h25v8H24z" fill="#ffffff"/>
+  <text x="100" y="49" font-family="sans-serif" font-size="26" fill="#64748b">Example Company</text>
+</svg>

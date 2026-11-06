@@ -1,0 +1,11 @@
+serviceApproval:
+  clientId: dify-agentgateway # Separate managed service identity for model calls.
+  realmRoles: [] # No browser or administration roles for the service.
+  audiences: [agentgateway] # Only issue gateway-audience access tokens.
+  gatewayPermissions: # Match the selected model-sync projection and shared client roles.
+    - llm:invoke
+    - model:local/llama3.2-3b:invoke
+    - model:remote/deepseek/v4.1-flash:invoke
+    - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+    - provider:deepseek:global-use
+    - provider:openrouter:global-use

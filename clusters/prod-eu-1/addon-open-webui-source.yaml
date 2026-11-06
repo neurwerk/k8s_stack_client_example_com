@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: open-webui-addon
+  namespace: flux-system
+  annotations: {platform.neurwerk.com/channel: alpha}
+spec:
+  interval: 1m
+  url: https://github.com/neurwerk/k8s_stack_addon_open_webui.git
+  ref: {commit: e8f72b99a90ad07834ade416a8f87a548dfd32fc} # Immutable public add-on source.

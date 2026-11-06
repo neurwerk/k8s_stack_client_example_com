@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [network-policy-ollama.yaml, network-policy-mcp.yaml]
+generatorOptions: {disableNameSuffixHash: true}
+configMapGenerator:
+  - name: client-values
+    namespace: glitchtip
+    files: [values.yaml=../../config/client.yaml]
+  - name: glitchtip-product-values
+    namespace: glitchtip
+    files: [values.yaml=values.yaml]

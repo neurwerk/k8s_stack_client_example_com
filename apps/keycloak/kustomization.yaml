@@ -4,6 +4,12 @@ namespace: auth-keycloak
 generatorOptions:
   disableNameSuffixHash: true
 configMapGenerator:
+  - name: keycloak-branding-logo
+    files: [company-logo.svg]
+  - name: open-webui-oidc-approval-values
+    files: [values.yaml=../open-webui/oidc-approval/values.yaml]
+  - name: librechat-oidc-approval-values
+    files: [values.yaml=../librechat/oidc-approval/values.yaml]
   - name: client-values
     files:
       - values.yaml=../../config/client.yaml

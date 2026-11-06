@@ -14,11 +14,19 @@ mise exec -- make check
 
 This checks required tools, validates Kubernetes YAML, builds the application values, infrastructure values, and cluster roots, and runs the focused Python checks. Builds use local files and do not contact a cluster. Kubeconform skips unsupported custom-resource schemas in rendered output. The Python checks cover credential exclusion, destination policy, permission consistency, and Flux export handling.
 
-Passing these checks does not validate the selected Base charts against all client values: the local builds render ConfigMaps and Flux resources, not the remote platform's Helm charts. They also do not verify DNS, storage hardware, credential delivery, or running applications.
+The required composition checks also acquire every pinned public source and validate the selected add-on graph, credential delivery, identities and effective images. They require Helm on `PATH`. Use the reviewed Tooling package locked in [`config/tooling-requirements.txt`](../../config/tooling-requirements.txt):
+
+```bash
+make addons-acquire TOOLING_PYTHON='<reviewed-tooling-python>'
+make addons-project TOOLING_PYTHON='<reviewed-tooling-python>'
+make addons-check addons-projection-check TOOLING_PYTHON='<reviewed-tooling-python>'
+```
+
+Review the regenerated selection projection with the configuration change. These offline checks do not verify DNS, storage hardware, live credential delivery, provider availability or running applications. Refresh model observations and regenerate the Dify projection when changing the gateway catalog; the example intentionally contains no copied runtime observations.
 
 ## CI and release compatibility
 
-[`validate.yaml`](../../.github/workflows/validate.yaml) verifies the Python lockfile, runs the lightweight hooks in [`.pre-commit-config.yaml`](../../.pre-commit-config.yaml), and runs `make check`.
+[`validate.yaml`](../../.github/workflows/validate.yaml) verifies the Python lockfile, runs the lightweight hooks in [`.pre-commit-config.yaml`](../../.pre-commit-config.yaml), runs `make check`, and checks the complete add-on composition and generated selection projection.
 
 Platform compatibility is a separate workflow. [`platform-compatibility-evaluate.yaml`](../../.github/workflows/platform-compatibility-evaluate.yaml) reads [`config/validation-revision`](../../config/validation-revision) from the trusted PR base, checks out Base validation at that exact commit, and evaluates the current base, head, and test-merge revisions. Source changes require the `platform-adoption` environment step; a changed tuple requires fresh authorization. The workflow requires the configured status GitHub App and `platform-status` environment. These repository settings are external prerequisites, not created by the YAML.
 

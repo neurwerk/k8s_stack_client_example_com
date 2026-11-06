@@ -1,0 +1,8 @@
+# The setup CLI reads this product ConfigMap directly; keep the selectors aligned with config/client.yaml.
+docling:
+  enabled: true # Select CPU document extraction.
+  apiKeySecretRef:
+    name: docling-api # Secret delivered through OpenBao and External Secrets.
+    key: api-key # Secret data key containing the extraction API credential.
+  inference:
+    mode: cpu # Use the in-cluster CPU extraction runtime.

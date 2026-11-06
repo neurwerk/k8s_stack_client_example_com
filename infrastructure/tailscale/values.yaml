@@ -1,0 +1,15 @@
+tailscale:
+  enabled: true # Enable the operator after preparing its approved credentials.
+  oauthSecret: operator-oauth # Secret name delivered by the selected OpenBao catalog.
+  loginServer: https://headscale.example.com # Replace with your verified tailnet control-plane URL.
+  operatorConfig:
+    defaultTags: [tag:k8s-operator] # Operator tag allowed by your tailnet policy.
+  proxyConfig:
+    defaultTags: tag:k8s-api # Default transport tag for managed proxies.
+  apiServerProxyConfig:
+    mode: 'false' # Disable the operator's identity-terminating Kubernetes API proxy.
+    allowImpersonation: 'false' # Preserve native Kubernetes authentication.
+  api:
+    enabled: true # Offer TCP transport to the API with Kubernetes TLS/authentication intact.
+    hostname: kube-api-example # Tailnet device hostname, not the Kubernetes certificate name.
+    tags: [tag:k8s-api] # Restrict API transport through your tailnet access rules.

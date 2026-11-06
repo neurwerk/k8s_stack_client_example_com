@@ -1,0 +1,26 @@
+addonAccess:
+  platformAdminGrant: true # Allow platform administrators to administer Open WebUI.
+clientApproval:
+  clientId: open-webui # Exact browser identity requested by the add-on.
+  realmRoles: [openwebui-user, openwebui-admin] # Exact role names requested by the selected add-on.
+  audiences: [agentgateway] # Gateway-audience access tokens for the approved destinations.
+  gatewayPermissions: # Chat-completion models and one documentation MCP server.
+    - llm:invoke
+    - provider:openrouter:global-use
+    - provider:deepseek:global-use
+    - model:local/llama3.2-3b:invoke
+    - model:remote/deepseek/v4.1-flash:invoke
+    - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+    - mcp:context7:invoke
+  redirectUris: [https://chat.example.com/oauth/oidc/callback] # Exact login callback.
+  postLogoutRedirectUris: [https://chat.example.com/auth] # Exact return destination after signing out.
+  webOrigins: [https://chat.example.com] # Exact browser origin.
+authentication:
+  gatewayPermissions: # Must remain within the explicit approval above.
+    - llm:invoke
+    - provider:openrouter:global-use
+    - provider:deepseek:global-use
+    - model:local/llama3.2-3b:invoke
+    - model:remote/deepseek/v4.1-flash:invoke
+    - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+    - mcp:context7:invoke

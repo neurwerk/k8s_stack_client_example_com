@@ -4,6 +4,8 @@ namespace: frontend-librechat
 generatorOptions:
   disableNameSuffixHash: true
 configMapGenerator:
+  - name: librechat-model-cost-catalog
+    files: [catalog.json=../../../infrastructure/networking/agentgateway/model-pricing.json]
   - name: client-values
     files:
       - values.yaml=../../../config/client.yaml

@@ -1,228 +1,353 @@
-# Shared non-secret client configuration consumed by app and infrastructure Kustomizations.
-# Keep each client-wide fact here once; product values contain only product-specific overrides.
+# Shared non-secret settings; replace example.com and network placeholders before installation.
+# Product overrides live in apps/<product>/values.yaml and infrastructure/<product>/values.yaml.
 publicCertificates:
-  useProduction: false
-
+  useProduction: false # Switch to true after testing ACME with your own public DNS names.
 canonicalEndpointRouting:
-  mode: public-dns
-
+  mode: public-dns # Resolve canonical application URLs through your public DNS.
+agentgateway:
+  inspection:
+    enabled: true # Create the inspection CA and publish its public trust bundle.
+    rootIds: [2026-10] # Keep this ID aligned with inspection-pki, inspection-trust and signer names.
+aiGateway:
+  enabled: true # Publish the explicit model and MCP bindings below.
+  approvedOidcClients: # Only these application identities may invoke the listed bindings.
+    - clientId: open-webui
+      bindings: [openrouter, deepseek, local, mcp-context7]
+    - clientId: librechat
+      bindings: [openai-codex, openrouter, deepseek, local, mcp-context7, mcp-brave, mcp-github, mcp-glitchtip]
+    - clientId: pipecat
+      bindings: [local]
+  proxy:
+    enabled: true # Clients must trust the published inspection root before using this proxy.
+    hostname: ai-proxy.example.com # Public DNS name for the inspected forward proxy.
+    port: 8443 # Internal TLS listener port.
+    publicPort: 443 # Client-facing TLS port through Traefik passthrough.
+self-hosted-api-providers:
+  - id: local # Stable binding ID used by roles, applications and metadata.
+    displayName: Local # Human-readable provider label.
+    enabled: true # Expose the single local model.
+    provider: Custom # Use an OpenAI-compatible local inference server.
+    upstreamURL: http://ollama.inference.svc.cluster.local:11434/v1 # Replace with your trusted local inference endpoint.
+    credentialSources: [none] # Local inference is protected by network access rather than a provider key.
+    routes:
+      api:
+        enabled: true # Offer a platform-authenticated API route.
+        path: /local/api # Clients append /v1/chat/completions to this path.
+      inspected:
+        enabled: false # Local HTTP inference does not use HTTPS interception.
+    profiles: [openai-chat-completions-v1] # Wire protocol supported by this backend.
+    attachments:
+      documents: {mode: extract-text} # Send extracted document text to the model.
+      images: {mode: extract-text} # Send extracted image text rather than image bytes.
+    catalogModels: [local/llama3.2-3b] # Must match the model in the AgentGateway product values.
+external-api-providers:
+  - id: openrouter # One model through the OpenRouter aggregator.
+    displayName: OpenRouter # Provider label shown in Studio.
+    enabled: true # Enable this provider binding.
+    providerId: openrouter # Matches the provider global-use permission.
+    provider: Openrouter # Chart provider adapter name; case is significant.
+    upstreamURL: https://openrouter.ai/api/v1 # Official OpenRouter API origin.
+    credentialSources: [global, override] # Permit approved shared keys and caller-supplied keys.
+    authSecret: infra-agentgateway-secret # Secret reference only; provision the key through OpenBao.
+    routes:
+      api:
+        enabled: true # Enable the platform-authenticated model API.
+        path: /openrouter/api # Public binding path beneath the API hostname.
+      inspected:
+        enabled: false # This provider uses the model API rather than intercepted HTTPS.
+    profiles: [openai-chat-completions-v1] # Supported request/response format.
+    localReroute: local/llama3.2-3b # Trusted fallback when the PII policy requests a reroute.
+    attachments:
+      documents: {mode: extract-text} # Extract document text before model invocation.
+      images: {mode: extract-text} # Extract image text before model invocation.
+    catalogModels: [remote/openrouter/deepseek/deepseek-v4.1-flash-1017] # Keep the catalog policy and permissions aligned.
+  - id: deepseek # One directly billed provider, independent of OpenRouter.
+    displayName: DeepSeek # Provider label shown in Studio.
+    enabled: true # Enable the direct provider binding.
+    providerId: deepseek # Matches provider:deepseek:global-use.
+    provider: Deepseek # Chart provider adapter name.
+    upstreamURL: https://api.deepseek.com/v1 # Official direct-provider API origin.
+    credentialSources: [global, override] # Shared credentials require a separate global-use grant.
+    authSecret: infra-agentgateway-deepseek-secret # Deliver the provider key through OpenBao.
+    routes:
+      api:
+        enabled: true # Enable the platform-authenticated model API.
+        path: /deepseek/api # Public binding path beneath the API hostname.
+      inspected:
+        enabled: false # Use the explicit model API route.
+    profiles: [openai-chat-completions-v1] # Supported request/response format.
+    localReroute: local/llama3.2-3b # Trusted local fallback for PII reroutes.
+    attachments:
+      documents: {mode: extract-text} # Extract document text before forwarding.
+      images: {mode: extract-text} # Extract image text before forwarding.
+    catalogModels: [remote/deepseek/v4.1-flash] # Exactly one direct model.
+external-subscription-providers:
+  - id: openai-codex # One subscription integration with one selectable model.
+    displayName: OpenAI Codex # Integration label shown in Studio.
+    enabled: true # Enable subscription-backed Codex requests.
+    providerId: openai # Provider identity, separate from the binding ID.
+    provider: OpenAI # Adapter for the Codex Responses protocol.
+    upstreamURL: https://chatgpt.com/backend-api/codex # Subscription API endpoint.
+    billingMode: included # Usage is included in the caller's provider subscription.
+    credentialSources: [override] # Callers supply their own subscription credentials.
+    routes:
+      api:
+        enabled: true # Authenticate the platform identity with Authorization-Neurwerk.
+        path: /openai/codex # Public route for Codex-compatible clients.
+      inspected:
+        enabled: true # Also support Codex through the inspected forward proxy.
+    profiles: [openai-codex-responses-v1] # Subscription-specific Responses profile.
+    models:
+      - name: remote/openai/codex/gpt-6-astra # Canonical model ID used in permissions.
+        upstreamModel: gpt-6-astra # Model ID accepted by the subscription provider.
+        piiEnabled: true # Apply the configured PII policy.
+        contentTracingEnabled: true # Send eligible content traces to Langfuse.
+rejectedRequestDebug:
+  enabled: true # Make rejected-request diagnostics available to authorized operators.
+traefik:
+  accessLogs:
+    enabled: false # Avoid duplicating request metadata in edge access logs.
+postgresOperations:
+  documentdbIngressPeers: # Permit only the selected LibreChat consumers.
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: frontend-librechat}
+      podSelector:
+        matchLabels: {app.kubernetes.io/name: frontend-librechat, app.kubernetes.io/instance: frontend-librechat}
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: frontend-librechat}
+      podSelector:
+        matchLabels: {app.kubernetes.io/name: frontend-librechat, app.kubernetes.io/instance: frontend-librechat-permissions, app.kubernetes.io/component: permissions}
+glitchtip:
+  enabled: true # Select error reporting; complete credential and DSN setup before activation.
+  adapter:
+    enabled: true # Collect application failures using the scoped OpenSearch reader.
+    scopes: # Scope IDs also identify notification routing; preserve them after installation.
+      - id: agentgateway
+        application: agentgateway
+        service: agentgateway
+        namespaces: [infra-agentgateway]
+        containers: [agentgateway]
+        failure_types: [timeout, upstream_error, connection_error, processing_error, background_error, upload_error, document_error, stream_error, application_error]
+      - id: agentgateway-extproc
+        application: agentgateway-extproc
+        service: agentgateway-extproc
+        namespaces: [monitor-agentgateway-extproc]
+        containers: [extproc]
+        failure_types: [timeout, upstream_error, connection_error, processing_error, background_error, upload_error, document_error, stream_error, application_error]
+      - id: pii-engine
+        application: pii-engine
+        service: pii-engine
+        namespaces: [monitor-pii-engine]
+        containers: [pii-engine]
+        failure_types: [timeout, upstream_error, connection_error, processing_error, background_error, upload_error, document_error, stream_error, application_error]
+      - id: librechat
+        application: librechat
+        service: librechat
+        namespaces: [frontend-librechat]
+        containers: [librechat]
+        failure_types: [timeout, upstream_error, connection_error, processing_error, background_error, upload_error, document_error, stream_error, application_error]
+      - id: postgres-operations
+        application: postgres-operations
+        service: postgres-operations
+        namespaces: [infra-postgres-operations]
+        containers: [postgresql-documentdb]
+        failure_types: [timeout, upstream_error, connection_error, processing_error, background_error, upload_error, document_error, stream_error, application_error]
+      - id: traefik
+        application: traefik
+        service: traefik
+        namespaces: [kube-system]
+        containers: [traefik]
+        failure_types: [timeout, upstream_error, connection_error, processing_error, background_error, upload_error, document_error, stream_error, application_error]
+monitorFluentBit:
+  applicationAlerts:
+    addonApplications: {frontend-librechat: librechat} # Map add-on namespaces to reporting application IDs.
+monitorKubePrometheusStack:
+  alerting:
+    applications:
+      additionalNamespaces: [frontend-librechat] # Include selected add-on workloads in application alerts.
+maintenance:
+  enabled: true # Install support without activating maintenance; its chart requires replacing example.com with your domain.
+  products:
+    studio: {enabled: true} # Allow the operator to select Studio maintenance.
+    langfuse: {enabled: true} # Allow the operator to select Langfuse maintenance.
+  addons:
+    librechat:
+      enabled: true # Include both LibreChat hosts in maintenance routing.
+      hosts: [librechat.example.com, admin.librechat.example.com]
+    dify:
+      enabled: true # Include Dify in maintenance routing.
+      hosts: [dify.example.com]
+    open-webui:
+      enabled: true # Include Open WebUI in maintenance routing.
+      hosts: [chat.example.com]
+dify:
+  enabled: true # Select the public Dify add-on.
+  hostname: dify.example.com # Public Dify hostname; align its OIDC approval values.
+pipecat:
+  enabled: true # Select the public Pipecat add-on.
+  hostname: pipecat.example.com # Public Pipecat hostname; align its OIDC approval values.
+docling:
+  enabled: true # Enable document and image text extraction.
+  inference:
+    mode: cpu # Run extraction in-cluster without another LLM backend.
+  documentTimeoutSeconds: 300 # Maximum extraction time for one document.
+  syncWaitSeconds: 360 # Wait longer than the document timeout for synchronous callers.
 authKeycloak:
-  hostname: "auth.example.com"
-  librechatRedirectUri: "https://chat.example.com/oauth/openid/callback"
-  librechatWebOrigin: "https://chat.example.com"
-  librechatAdminRedirectUri: "https://chat.example.com/api/admin/oauth/openid/callback"
-  librechatAdminWebOrigin: "https://chat-admin.example.com"
-  agentgatewayRedirectUri: ""
-  agentgatewayWebOrigin: ""
-  studioRedirectUri: "https://studio.example.com/auth/callback"
-  studioWebOrigin: "https://studio.example.com"
-  keycloakApiKeyBridgeRedirectUri: ""
-  keycloakApiKeyBridgeWebOrigin: ""
-  realm: example
-  agentgatewayClientId: agentgateway
-  keycloakApiKeyBridgeClientId: keycloak-api-key-bridge
-  librechatClientId: librechat
-  studioClientId: studio
-  agentgatewayClientRoles:
+  hostname: auth.example.com # Public identity-provider hostname.
+  realm: example # Tenant realm; update issuer URLs and onboarding settings together.
+  openwebuiClientId: open-webui # Browser identity used by the Open WebUI add-on.
+  openwebuiRedirectUri: https://chat.example.com/oauth/oidc/callback # Exact login callback.
+  openwebuiWebOrigin: https://chat.example.com # Allowed browser origin.
+  librechatClientId: librechat # Browser identity used by LibreChat.
+  librechatRedirectUri: https://librechat.example.com/oauth/openid/callback # Exact login callback.
+  librechatWebOrigin: https://librechat.example.com # Allowed browser origin.
+  librechatAdminRedirectUri: https://librechat.example.com/api/admin/oauth/openid/callback # Admin login callback.
+  librechatAdminWebOrigin: https://admin.librechat.example.com # Admin browser origin.
+  agentgatewayClientId: agentgateway # Gateway audience and resource identity.
+  agentgatewayRedirectUri: '' # Service identity; no interactive browser callback.
+  agentgatewayWebOrigin: '' # Service identity; no browser origin.
+  keycloakApiKeyBridgeClientId: keycloak-api-key-bridge # API-key service identity.
+  keycloakApiKeyBridgeRedirectUri: '' # No interactive browser callback.
+  keycloakApiKeyBridgeWebOrigin: '' # No browser origin.
+  studioClientId: studio # Browser and management identity used by Studio.
+  studioRedirectUri: https://studio.example.com/auth/callback # Exact Studio callback.
+  studioWebOrigin: https://studio.example.com # Allowed Studio browser origin.
+  difyClientId: dify # Dify browser identity.
+  difyAgentgatewayClientId: dify-agentgateway # Separate Dify gateway service identity.
+  difyAgentgatewayClientRoles: # Must match the Dify service approval and model-sync selection.
     - llm:invoke
-    - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-    - model:remote/openrouter/mimo-v2.5:invoke
-    - model:remote/openrouter/hy3:invoke
-    - model:remote/openrouter/deepseek-v4-flash:invoke
-    - model:remote/openrouter/nemotron-3-ultra-free:invoke
-    - model:remote/openrouter/gpt-5.6-luna:invoke
-    - model:remote/openrouter/glm-5.2:invoke
-    - model:remote/openrouter/gemini-3.7-flash:invoke
-    - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-    - model:remote/openrouter/minimax-m3:invoke
-    - model:remote/openrouter/laguna-s-2.1-free:invoke
-    - model:remote/openrouter/claude-opus-5:invoke
-    - model:remote/openrouter/gpt-5.6-sol:invoke
-    - model:remote/openrouter/kimi-k3:invoke
-    - model:remote/openrouter/claude-sonnet-5:invoke
-    - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-    - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-    - model:remote/openrouter/gemini-3-flash-preview:invoke
-    - model:remote/openrouter/gemini-2.5-flash-lite:invoke
     - model:local/llama3.2-3b:invoke
-  agentgatewayAccessGroups:
-    /access/librechat-admins:
+    - model:remote/deepseek/v4.1-flash:invoke
+    - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+    - provider:deepseek:global-use
+    - provider:openrouter:global-use
+  agentgatewayClientRoles: # Define only roles for configured destinations and funding sources.
+    - llm:invoke
+    - provider:openrouter:global-use
+    - provider:deepseek:global-use
+    - model:local/llama3.2-3b:invoke
+    - model:remote/deepseek/v4.1-flash:invoke
+    - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+    - model:remote/openai/codex/gpt-6-astra:invoke
+    - mcp:brave:invoke
+    - mcp:context7:invoke
+    - mcp:github:invoke
+    - mcp:glitchtip:invoke
+  agentgatewayAccessGroups: # Assign these groups through reviewed onboarding or directory mappings.
+    /access/neurwerk-mcp-glitchtip-users: [llm:invoke, 'mcp:glitchtip:invoke']
+    /access/neurwerk-mcp-all-users: [llm:invoke, 'mcp:brave:invoke', 'mcp:context7:invoke', 'mcp:github:invoke']
+    /access/neurwerk-llm-all-users:
       - llm:invoke
-      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-      - model:remote/openrouter/mimo-v2.5:invoke
-      - model:remote/openrouter/hy3:invoke
-      - model:remote/openrouter/deepseek-v4-flash:invoke
-      - model:remote/openrouter/nemotron-3-ultra-free:invoke
-      - model:remote/openrouter/gpt-5.6-luna:invoke
-      - model:remote/openrouter/glm-5.2:invoke
-      - model:remote/openrouter/gemini-3.7-flash:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-      - model:remote/openrouter/minimax-m3:invoke
-      - model:remote/openrouter/laguna-s-2.1-free:invoke
-      - model:remote/openrouter/claude-opus-5:invoke
-      - model:remote/openrouter/gpt-5.6-sol:invoke
-      - model:remote/openrouter/kimi-k3:invoke
-      - model:remote/openrouter/claude-sonnet-5:invoke
-      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-      - model:remote/openrouter/gemini-3-flash-preview:invoke
-      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
+      - provider:openrouter:global-use
+      - provider:deepseek:global-use
       - model:local/llama3.2-3b:invoke
-    /access/librechat-users:
-      - llm:invoke
-      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-      - model:remote/openrouter/mimo-v2.5:invoke
-      - model:remote/openrouter/hy3:invoke
-      - model:remote/openrouter/deepseek-v4-flash:invoke
-      - model:remote/openrouter/nemotron-3-ultra-free:invoke
-      - model:remote/openrouter/gpt-5.6-luna:invoke
-      - model:remote/openrouter/glm-5.2:invoke
-      - model:remote/openrouter/gemini-3.7-flash:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-      - model:remote/openrouter/minimax-m3:invoke
-      - model:remote/openrouter/laguna-s-2.1-free:invoke
-      - model:remote/openrouter/claude-opus-5:invoke
-      - model:remote/openrouter/gpt-5.6-sol:invoke
-      - model:remote/openrouter/kimi-k3:invoke
-      - model:remote/openrouter/claude-sonnet-5:invoke
-      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-      - model:remote/openrouter/gemini-3-flash-preview:invoke
-      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
-      - model:local/llama3.2-3b:invoke
-    /access/platform-admins:
-      - llm:invoke
-      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-      - model:remote/openrouter/mimo-v2.5:invoke
-      - model:remote/openrouter/hy3:invoke
-      - model:remote/openrouter/deepseek-v4-flash:invoke
-      - model:remote/openrouter/nemotron-3-ultra-free:invoke
-      - model:remote/openrouter/gpt-5.6-luna:invoke
-      - model:remote/openrouter/glm-5.2:invoke
-      - model:remote/openrouter/gemini-3.7-flash:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-      - model:remote/openrouter/minimax-m3:invoke
-      - model:remote/openrouter/laguna-s-2.1-free:invoke
-      - model:remote/openrouter/claude-opus-5:invoke
-      - model:remote/openrouter/gpt-5.6-sol:invoke
-      - model:remote/openrouter/kimi-k3:invoke
-      - model:remote/openrouter/claude-sonnet-5:invoke
-      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-      - model:remote/openrouter/gemini-3-flash-preview:invoke
-      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
-      - model:local/llama3.2-3b:invoke
-    /access/studio-users:
-      - llm:invoke
-      - model:remote/openrouter/deepseek-v4-flash-0731:invoke
-      - model:remote/openrouter/mimo-v2.5:invoke
-      - model:remote/openrouter/hy3:invoke
-      - model:remote/openrouter/deepseek-v4-flash:invoke
-      - model:remote/openrouter/nemotron-3-ultra-free:invoke
-      - model:remote/openrouter/gpt-5.6-luna:invoke
-      - model:remote/openrouter/glm-5.2:invoke
-      - model:remote/openrouter/gemini-3.7-flash:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0423:invoke
-      - model:remote/openrouter/minimax-m3:invoke
-      - model:remote/openrouter/laguna-s-2.1-free:invoke
-      - model:remote/openrouter/claude-opus-5:invoke
-      - model:remote/openrouter/gpt-5.6-sol:invoke
-      - model:remote/openrouter/kimi-k3:invoke
-      - model:remote/openrouter/claude-sonnet-5:invoke
-      - model:remote/openrouter/nemotron-3.5-lightning-free:invoke
-      - model:remote/openrouter/deepseek-v4-pro-0813:invoke
-      - model:remote/openrouter/gemini-3-flash-preview:invoke
-      - model:remote/openrouter/gemini-2.5-flash-lite:invoke
-      - model:local/llama3.2-3b:invoke
-  keycloak:
-    resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: 1000m
-        memory: 1Gi
+      - model:remote/deepseek/v4.1-flash:invoke
+      - model:remote/openrouter/deepseek/deepseek-v4.1-flash-1017:invoke
+      - model:remote/openai/codex/gpt-6-astra:invoke
 authKeycloakApiKeyBridge:
-  hostname: "api-keys.example.com"
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 300m
-      memory: 256Mi
+  hostname: api-keys.example.com # Public API-key management hostname.
 infraAgentgatewayWrapper:
-  hostname: "agent.example.com"
+  hostname: ai-api.example.com # Public hostname for all model and MCP API routes.
+  addonIngressPeers: # Allow selected add-on pods to reach the gateway.
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: frontend-open-webui}
+      podSelector:
+        matchLabels: {app.kubernetes.io/name: frontend-open-webui}
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: frontend-librechat}
+      podSelector:
+        matchLabels: {app.kubernetes.io/name: frontend-librechat}
 infraRookCeph:
   objectStore:
-    publicHostname: "files.chat.example.com"
+    publicHostname: files.librechat.example.com # Public object-storage download hostname.
+frontendOpenWebui:
+  enabled: true # Select Open WebUI.
+  hostname: chat.example.com # Public chat hostname.
 frontendLibrechat:
-  hostname: "chat.example.com"
+  enabled: true # Select LibreChat.
+  hostname: librechat.example.com # Public LibreChat hostname.
+  subagents:
+    enabled: true # Permit LibreChat agents to delegate tasks.
+    fileSharing:
+      enabled: true # Share eligible attachments with subagents.
   adminPanel:
-    hostname: "chat-admin.example.com"
-frontendStudio:
-  studio:
-    hostname: "studio.example.com"
-    oidcAuthority: "https://auth.example.com/realms/example"
-    oidcClientId: "studio"
-  api:
-    keycloakServerUrl: "http://auth-keycloak-keycloak-service.auth-keycloak.svc.cluster.local"
-    keycloakRealm: "example"
-    keycloakClientId: "studio"
+    hostname: admin.librechat.example.com # Separate admin-panel hostname.
 monitorLangfuseWrapper:
-  hostname: "monitor.example.com"
-  otelCollector:
-    resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        cpu: 200m
-        memory: 256Mi
+  hostname: langfuse.example.com # Public tracing dashboard hostname.
 langfuse:
   langfuse:
     nextauth:
-      url: "https://monitor.example.com"
-    replicas: 1
-    resources:
-      requests:
-        cpu: 250m
-        memory: 1Gi
-      limits:
-        cpu: 1000m
-        memory: 2Gi
-  clickhouse:
-    replicaCount: 1
-    resourcesPreset: custom
-    resources:
-      requests:
-        cpu: 500m
-        memory: 1Gi
-      limits:
-        cpu: 1000m
-        memory: 2Gi
-# MCP is disabled in the example by default. Add approved servers here; put
-# external credentials entered through the OpenBao setup operator.
-mcp:
-  enabled: false
-  servers: []
+      url: https://langfuse.example.com # Canonical login origin for Langfuse.
+frontendStudio:
+  studio:
+    hostname: studio.example.com # Public platform dashboard hostname.
+    oidcAuthority: https://auth.example.com/realms/example # Must match the Keycloak realm issuer.
+    oidcClientId: studio # Registered Studio client ID.
+  api:
+    keycloakServerUrl: http://auth-keycloak-keycloak-service.auth-keycloak.svc.cluster.local # Internal identity endpoint.
+    keycloakRealm: example # Same realm as authKeycloak.realm.
+    keycloakClientId: studio # Registered Studio service identity.
+    contextforge:
+      enabled: true # Enable managed MCP connections.
+      accountOnboardingEnabled: true # Create personal ContextForge accounts through Studio.
+      connectionsEnabled: true # Show personal provider connection actions.
+      adminDiscovery:
+        enabled: true # Allow authorized administrators to discover tools.
+      serviceAccountEmail: contextforge-studio@example.com # Match ContextForge setup's service account.
+      studioOrigin: https://studio.example.com # Match the trusted browser origin.
+      catalogConfigMapName: contextforge-setup # Generated public MCP catalog.
+      setupConfigMapName: contextforge-setup # Generated MCP setup configuration.
+mcp-servers:
+  enabled: true # Enable the managed MCP integration catalog.
+  studioSetup:
+    enabled: true # Publish setup and connection controls in Studio.
+  approvedHosts: [mcp.context7.com, glitchtip-ui.glitchtip.svc.cluster.local] # Explicit additional upstream hosts.
+  contextforgeRoutesEnabled: [context7, brave, github, glitchtip] # Route these presets through ContextForge.
+  catalog:
+    presets:
+      context7:
+        enabled: true # Documentation search; supply personal credentials through Studio.
+        piiEnabled: true # Inspect tool requests and responses.
+        contentTracingEnabled: true # Trace eligible tool content.
+      brave:
+        enabled: true # Web search; provision the approved provider credential separately.
+        piiEnabled: true # Inspect tool requests and responses.
+        contentTracingEnabled: true # Trace eligible tool content.
+      github:
+        enabled: true # GitHub tools with personal OAuth connections.
+        piiEnabled: true # Inspect tool requests and responses.
+        contentTracingEnabled: true # Trace eligible tool content.
+        registration:
+          oauth:
+            client_id: replace-with-your-github-oauth-client-id # Public ID from your own OAuth application.
+            redirect_uri: https://studio.example.com/oauth/callback # Register this exact callback in the OAuth app.
+      glitchtip:
+        enabled: true # Expose authorized error-reporting tools.
+        piiEnabled: true # Inspect tool requests and responses.
+        contentTracingEnabled: true # Trace eligible tool content.
+        host: glitchtip-ui.glitchtip.svc.cluster.local # Internal TLS service hostname.
+        registration:
+          upstream_url: https://glitchtip.example.com/mcp # Private management hostname reachable on your tailnet.
+    custom: [] # Add only approved custom MCP destinations.
 guardrails:
   llmPolicyEngine:
-    enabled: true
+    enabled: true # Enable request inspection and privacy routing.
+    attachmentPolicyVersion: '4.1' # Must match the selected Base release's attachment policy.
 monitorPiiEngine:
   policy:
+    attachments:
+      faces:
+        action: block # Block detected faces instead of forwarding them.
     routing:
-      defaultTarget: local/llama3.2-3b
-      targets:
-        - name: local/llama3.2-3b
+      defaultTarget: local/llama3.2-3b # Trusted destination for reroute actions.
+      targets: [{name: local/llama3.2-3b}] # Reference the single configured local model.
     pii:
-      analyzerLanguages: [en]
-      scoreThreshold: 0.5
-      timeout: 600
-      defaultAction: block
-      # Trusted local reroutes can receive the original PII.
-      maskOnReroute: false
-      entityPolicies:
+      analyzerLanguages: [de, en] # Languages analyzed for personal information.
+      scoreThreshold: 0.5 # Minimum confidence for an entity detection.
+      timeout: 600 # Maximum policy processing time in seconds.
+      defaultAction: block # Block entities without an explicit policy.
+      maskOnReroute: false # The approved local fallback may receive the original text.
+      entityPolicies: # Choose pass, block, reroute or reversible_replace per entity.
         - {entityType: SENSITIVE_TEXT, action: reversible_replace}
         - {entityType: PERSON_NAME, action: reversible_replace}
         - {entityType: PHONE_NUMBER, action: reversible_replace}
@@ -232,56 +357,32 @@ monitorPiiEngine:
         - {entityType: CITY, action: reversible_replace}
         - {entityType: DATE_OF_BIRTH, action: reversible_replace}
         - {entityType: PLACE_OF_BIRTH, action: reversible_replace}
-        - {entityType: BANK_ACCOUNT, action: reversible_replace}
         - {entityType: IBAN, action: reversible_replace}
         - {entityType: CREDIT_CARD_NUMBER, action: reversible_replace}
         - {entityType: PASSPORT_NUMBER, action: reversible_replace}
         - {entityType: DRIVERS_LICENSE_NUMBER, action: reversible_replace}
         - {entityType: NATIONAL_ID_NUMBER, action: reversible_replace}
-        - {entityType: BSN, action: reversible_replace}
-        - {entityType: TAX_ID, action: reversible_replace}
-        - {entityType: VAT_NUMBER, action: reversible_replace}
+        - {entityType: TAX_ID, action: reroute}
+        - {entityType: STEUERNUMMER, action: reroute}
+        - {entityType: VAT_NUMBER, action: reroute}
         - {entityType: HEALTH_INSURANCE_ID, action: reversible_replace}
         - {entityType: MEDICAL_RECORD_ID, action: reversible_replace}
         - {entityType: USERNAME, action: reversible_replace}
         - {entityType: PASSWORD_OR_SECRET, action: reversible_replace}
         - {entityType: VEHICLE_REGISTRATION, action: reversible_replace}
-        - {entityType: SIGNATURE, action: reversible_replace}
-        - entityType: CREDENTIAL
+        - entityType: CLIENT_COMPANY # Synthetic custom entity; replace with your approved organization patterns.
+          action: reversible_replace
+          patterns: ['(?i)\bExample Company\b']
+        - entityType: CLIENT_PRODUCT # Synthetic product name; never publish customer-specific patterns.
+          action: reversible_replace
+          patterns: ['(?i)\bExample Product\b']
+        - entityType: CREDENTIAL # Detect credential-like text without embedding actual credentials.
           action: reversible_replace
           patterns:
-            - |-
-              \bAKIA[0-9A-Z]{16}\b
-            - |-
-              \bsk-[a-zA-Z0-9_-]{20,}\b
-            - |-
-              \beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b
-            - |-
-              -----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----
-            - |-
-              (?i)(bearer|authorization)[:\s]+[A-Za-z0-9\-._~+/]{20,}=*
-            - |-
-              (?i)(mongodb|postgres|postgresql|mysql|redis|amqp|mssql)://[^\s\"'<>]{10,}
-            - |-
-              (?i)(password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*["\']?[^\s"\']{8,}
-            - |-
-              (?i)(my|the|your|his|her|our|their)\s+(password|passwd|secret|passcode|pin|token)\s+(is|was|=|:)\s+\S{4,}
-        - {entityType: IP_ADDRESS, action: pass}
-agentgateway:
-  controller:
-    replicaCount: 1
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-  proxy:
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+            - '\bAKIA[0-9A-Z]{16}\b'
+            - '\bsk-[a-zA-Z0-9_-]{20,}\b'
+            - '\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b'
+            - '-----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----'
+            - '(?i)(bearer|authorization)[:\s]+[A-Za-z0-9\-._~+/]{20,}=*'
+            - '(?i)(mongodb|postgres|postgresql|mysql|redis|amqp|mssql)://[^\s]{10,}'
+        - {entityType: IP_ADDRESS, action: pass} # Allow ordinary network addresses in model input.

@@ -1,7 +1,7 @@
 postgresAuth:
   persistence:
-    storageClassName: infra-rook-ceph-rbd
+    storageClassName: infra-rook-ceph-rbd # Persistent storage class for identity databases.
 
 postgresOperations:
   persistence:
-    storageClassName: infra-rook-ceph-rbd
+    storageClassName: infra-rook-ceph-rbd # Persistent storage class for application databases.

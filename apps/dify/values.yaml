@@ -1,0 +1,11 @@
+externalGateway:
+  enabled: true # Publish the canonical Dify hostname through the edge gateway.
+frontendDify:
+  agentGateway:
+    bindingId: local # Default binding for Dify's managed gateway access.
+  defaultModel:
+    name: local/llama3.2-3b # Default model must belong to the selected binding.
+    contextSize: '128000' # Set to the context capacity configured on your inference server.
+  config:
+    AUTO_SETUP_ADMIN_EMAIL: breakglass@dify.example.com # Initial local administrator; credentials stay in OpenBao.
+    DEFAULT_WORKSPACE_NAME: Example # Display name for the initial workspace.

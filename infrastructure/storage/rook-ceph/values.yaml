@@ -1,12 +1,10 @@
-# Per-app configuration for infra-rook-ceph.
-#
-# Rook will not infer a storage device. Set both values to the Kubernetes node
-# name and stable raw-disk path approved for this client before deployment.
-#
 infraRookCeph:
+  mon:
+    compactOnTrim: false # Preserve the selected Ceph monitor compaction policy.
   objectStore:
+    allowUsersInNamespaces: [monitor-pii-engine, pipecat] # Namespaces permitted to request scoped bucket users.
     externalGateway:
-      enabled: true
-  # storage:
-  #   nodeName: "storage-node.example.com"
-  #   devicePath: "/dev/disk/by-id/<approved-raw-disk>"
+      enabled: true # Publish approved object downloads through the edge gateway.
+  storage:
+    nodeName: example-storage-1 # Replace with the node containing your approved dedicated OSD disk.
+    devicePath: /dev/disk/by-id/REPLACE_WITH_DEDICATED_OSD_DISK # Select a dedicated raw disk; never use the operating-system disk.

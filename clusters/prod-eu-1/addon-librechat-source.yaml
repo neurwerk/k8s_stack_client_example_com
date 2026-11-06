@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: librechat-addon
+  namespace: flux-system
+  annotations: {platform.neurwerk.com/channel: alpha}
+spec:
+  interval: 1m
+  url: https://github.com/neurwerk/k8s_stack_addon_librechat.git
+  ref: {commit: a62b07f55fc4481dba8305bafcdf48fdaeb0fe5f} # Immutable public add-on source.

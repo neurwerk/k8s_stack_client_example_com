@@ -1,0 +1,30 @@
+reloader:
+  reloader:
+    namespaces: # Watch selected namespaces for Secret and ConfigMap rotations.
+      - auth-keycloak
+      - auth-keycloak-api-key-bridge
+      - frontend-studio
+      - infra-postgres-auth
+      - infra-postgres-operations
+      - monitor-fluent-bit
+      - monitor-langfuse
+      - monitor-pii-engine
+      - monitor-agentgateway-extproc
+      - docling
+      - frontend-librechat
+      - pipecat
+infraReloader:
+  watchedNamespaces: # Grant scoped watch access; keep aligned with the controller list above.
+    - auth-keycloak
+    - auth-keycloak-api-key-bridge
+    - frontend-studio
+    - infra-postgres-auth
+    - infra-postgres-operations
+    - infra-reloader
+    - monitor-fluent-bit
+    - monitor-langfuse
+    - monitor-pii-engine
+    - monitor-agentgateway-extproc
+    - docling
+    - frontend-librechat
+    - pipecat

@@ -1,4 +1,12 @@
 {
-  "default_groups": [],
+  "default_groups": [
+    "/access/neurwerk-librechat-users",
+    "/access/neurwerk-openwebui-users",
+    "/access/neurwerk-dify-users",
+    "/access/neurwerk-pipecat-users",
+    "/access/neurwerk-mcp-all-users",
+    "/access/neurwerk-llm-all-users",
+    "/access/neurwerk-studio-users"
+  ],
   "disabled_groups": []
 }

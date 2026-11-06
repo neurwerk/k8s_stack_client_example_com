@@ -1,32 +1,48 @@
-# ── Client overrides for monitor-kube-prometheus-stack ────────────────────────
-# The example client has no real SMTP destination, so it explicitly opts out of
-# the platform-default email receiver.
-
 monitorKubePrometheusStack:
   alerting:
     email:
-      enabled: false
-
-# K3s embeds these components instead of exposing the standalone scrape targets.
+      enabled: true # Enable Alertmanager email after provisioning SMTP credentials.
+      host: smtp.example.com # Approved SMTP relay.
+      port: 465 # Implicit TLS SMTP port.
+      from: no-reply@example.com # Verified sender mailbox.
+      to: admin@example.com # Operator notification mailbox.
+      applicationErrors:
+        verifiedGlitchtipScopeIds: [] # Add scope IDs only after verifying native GlitchTip notifications; prevents silent alert suppression.
+        groupWait: 30s # Delay before sending a new alert group.
+        groupInterval: 5m # Minimum interval for updates to an alert group.
+        repeatInterval: 24h # Resend unchanged application-error alerts at this interval.
+        sendResolved: false # Application-error notifications need no resolution email.
+        activeTime:
+          enabled: true # Apply office hours only to application-error notifications.
+          weekdays: [monday:friday] # Prometheus weekday range syntax.
+          startTime: '08:00' # Start of the local notification window.
+          endTime: '18:00' # End of the local notification window.
+          location: Europe/Berlin # IANA time zone for office hours.
 kube-prometheus-stack:
+  alertmanager:
+    enabled: true # Keep infrastructure health notifications active.
+  prometheus:
+    prometheusSpec:
+      retention: 30d # Maximum sample retention age.
+      retentionSize: 90GB # Leave compaction/WAL headroom within the PVC.
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            resources:
+              requests:
+                storage: 100Gi # Metrics storage capacity.
+  kubelet:
+    serviceMonitor:
+      metricRelabelings: # This example uses embedded K3s control-plane components.
+        - action: drop
+          sourceLabels: [__name__, le]
+          regex: '(csi_operations|storage_operation_duration)_seconds_bucket;(0.25|2.5|15|25|120|600)(\.0)?' # Reduce redundant storage histogram buckets.
+        - action: drop
+          sourceLabels: [__name__]
+          regex: '(apiserver|etcd|kine|scheduler)_.*' # Use the API-server scrape as the canonical control-plane source.
   kubeControllerManager:
-    enabled: false
+    enabled: false # Enable only if your distribution exposes a standalone scrape target.
   kubeScheduler:
-    enabled: false
+    enabled: false # K3s embeds the scheduler rather than exposing this target.
   kubeProxy:
-    enabled: false
-
-# Example: override Prometheus retention or storage size.
-#
-# Uncomment and adjust as needed:
-#
-# kube-prometheus-stack:
-#   prometheus:
-#     prometheusSpec:
-#       retention: 30d
-#       storageSpec:
-#         volumeClaimTemplate:
-#           spec:
-#             resources:
-#               requests:
-#                 storage: 100Gi
+    enabled: false # K3s does not expose the expected standalone kube-proxy target.

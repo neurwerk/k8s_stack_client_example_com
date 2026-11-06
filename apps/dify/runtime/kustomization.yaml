@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: frontend-dify
+generatorOptions:
+  disableNameSuffixHash: true
+  labels: {reconcile.fluxcd.io/watch: Enabled}
+configMapGenerator:
+  - name: client-values
+    files: [values.yaml=../../../config/client.yaml]
+  - name: dify-product-values
+    files: [values.yaml=../values.yaml]
+  - name: dify-model-sync-values
+    files: [values.yaml=../../../config/dify-model-sync.yaml]

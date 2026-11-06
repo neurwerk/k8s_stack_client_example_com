@@ -1,0 +1,7 @@
+clientApproval:
+  clientId: dify # Must match the add-on browser identity.
+  realmRoles: [dify-user, dify-admin] # Exact approved application roles.
+  audiences: [dify] # Browser identity has only the application audience.
+  gatewayPermissions: [] # Gateway access uses the separate service identity.
+  redirectUris: [https://dify.example.com/console/api/oauth/authorize/keycloak] # Exact Dify login callback.
+  webOrigins: [https://dify.example.com] # Exact approved browser origin.

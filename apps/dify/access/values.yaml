@@ -1,0 +1,2 @@
+addonAccess:
+  platformAdminGrant: true # Allow platform administrators to administer the selected add-on.

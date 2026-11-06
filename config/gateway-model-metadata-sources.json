@@ -1,0 +1,7 @@
+{
+  "bindings": {
+    "openrouter": {"kind": "openrouter", "source": "https://openrouter.ai/api/v1/models"},
+    "deepseek": {"kind": "deepseek", "source": "https://api.deepseek.com/v1/models", "credential_env": "DEEPSEEK_METADATA_KEY"},
+    "local": {"kind": "ollama", "source": "http://ollama.inference.svc.cluster.local:11434"}
+  }
+}

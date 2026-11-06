@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: glitchtip-mcp-ingress, namespace: glitchtip}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: glitchtip, app.kubernetes.io/instance: glitchtip, app.kubernetes.io/component: application}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: infra-agentgateway}
+          podSelector:
+            matchLabels: {gateway.networking.k8s.io/gateway-name: contextforge-providers}
+      ports: [{protocol: TCP, port: 8443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: glitchtip-mcp-egress, namespace: infra-agentgateway}
+spec:
+  podSelector:
+    matchLabels: {gateway.networking.k8s.io/gateway-name: contextforge-providers}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: glitchtip}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: glitchtip, app.kubernetes.io/instance: glitchtip, app.kubernetes.io/component: application}
+      ports: [{protocol: TCP, port: 8443}]

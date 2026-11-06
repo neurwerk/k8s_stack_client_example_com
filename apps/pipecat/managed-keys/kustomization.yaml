@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: auth-keycloak-api-key-bridge
+generatorOptions:
+  disableNameSuffixHash: true
+  labels: {reconcile.fluxcd.io/watch: Enabled}
+configMapGenerator:
+  - name: pipecat-product-values
+    files: [values.yaml=../values.yaml]
