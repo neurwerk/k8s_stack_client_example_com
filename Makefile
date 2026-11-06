@@ -27,7 +27,7 @@ KUBE_VERSION ?= 1.36.4
 ADDON_PROJECT = $(TOOLING_PYTHON) -c 'from k8s_stack_tooling.addons.sources import projection_main; raise SystemExit(projection_main())'
 FLUX_COMPONENTS := clusters/prod-eu-1/flux-system/gotk-components.yaml
 
-.PHONY: help tools yaml-lint kustomize-validate contract-check validation-check platform-compatibility check flux-components pre-commit-install
+.PHONY: help tools yaml-lint kustomize-validate lock-check contract-check validation-check platform-compatibility check flux-components pre-commit-install
 .PHONY: addons-acquire addons-check addons-project addons-projection-check
 
 addons-acquire: ## Acquire exact selected sources with ordinary operator/CI Git authentication
@@ -109,8 +109,11 @@ kustomize-validate: ## Build and validate all client Kustomizations
 	$(KUBECONFORM) -strict -summary -ignore-missing-schemas "$$output"; \
 	printf "$(GREEN)All Kustomizations passed validation.$(RESET)\n"
 
-contract-check: ## Run focused client security and authorization checks
+lock-check: ## Verify the Python lockfile is current without changing it
 	@if [ -z "$(UV)" ]; then printf "$(RED)uv is required$(RESET)\n"; exit 1; fi
+	@$(UV) lock --check
+
+contract-check: lock-check ## Run focused client security and authorization checks
 	@$(UV) run --frozen python -m unittest discover -s tests/validation -p 'test_*.py'
 
 validation-check: ## Verify the shared validation checkout
@@ -122,7 +125,7 @@ validation-check: ## Verify the shared validation checkout
 		test -f "$(VALIDATION_ROOT)/scripts/$$script.py" || { printf 'Missing shared validation script: %s\n' "$$script" >&2; exit 1; }; \
 	done
 
-platform-compatibility: validation-check ## Verify a changed platform source against Base
+platform-compatibility: lock-check validation-check ## Verify a changed platform source against Base
 	@if [ -z "$(UV)" ]; then printf "$(RED)uv is required$(RESET)\n"; exit 1; fi
 	@if [ -z "$(BASE_SHA)" ]; then printf "$(RED)BASE_SHA is required$(RESET)\n"; exit 1; fi
 	@if [ -z "$(HEAD_SHA)" ]; then printf "$(RED)HEAD_SHA is required$(RESET)\n"; exit 1; fi
@@ -132,9 +135,9 @@ platform-compatibility: validation-check ## Verify a changed platform source aga
 		--base-sha "$(BASE_SHA)" --head-sha "$(HEAD_SHA)" \
 		$(if $(PR_NUMBER),--pull-request-number "$(PR_NUMBER)" --merge-sha "$(MERGE_SHA)",)
 
-check: tools yaml-lint kustomize-validate contract-check ## Run all validation checks
+check: lock-check tools yaml-lint kustomize-validate contract-check ## Run all validation checks
 
-flux-components: ## Regenerate the pinned Flux bundle with shared bootstrap defaults
+flux-components: lock-check ## Regenerate the pinned Flux bundle with shared bootstrap defaults
 	@version=$$(sed -n 's/^# Flux Version: //p' "$(FLUX_COMPONENTS)"); \
 	test -n "$$version" || { printf 'Missing Flux version header.\n' >&2; exit 1; }; \
 	tmp=$$(mktemp "$(FLUX_COMPONENTS).XXXXXX"); \
