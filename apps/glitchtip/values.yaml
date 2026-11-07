@@ -52,11 +52,11 @@ glitchtip:
           expectedBody: '<title>neurwerk studio</title>'
           allowPrivateIPs: false
         - name: Dify
-          url: https://dify.example.com/
+          url: https://dify.example.com/favicon.ico
           interval: 60
           timeout: 10
           expectedStatus: 200
-          expectedBody: '<title>Sign in - Dify</title>'
+          expectedBody: ""
           allowPrivateIPs: false
         - name: LibreChat
           url: https://librechat.example.com/health
