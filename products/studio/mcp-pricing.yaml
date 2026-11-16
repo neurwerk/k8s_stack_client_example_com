@@ -1,0 +1,33 @@
+frontendStudio:
+  usage:
+    mcpPricing:
+      accounts:
+        - server: brave
+          billing_account: brave-search
+          complete_account_usage: false
+          prices:
+            - effective_from: "2026-11-16T00:00:00Z"
+              default: 5
+              tools:
+                brave_summarizer: null
+              monthly_credit: 5
+        - server: context7
+          billing_account: context7-pro-seat
+          complete_account_usage: false
+          prices:
+            - effective_from: "2026-11-16T00:00:00Z"
+              default: 5
+              monthly_fee: 10
+              included_calls: 2000
+        - server: github
+          billing_account: github-free
+          complete_account_usage: false
+          prices:
+            - effective_from: "2026-11-16T00:00:00Z"
+              default: 0
+        - server: glitchtip
+          billing_account: glitchtip-free
+          complete_account_usage: false
+          prices:
+            - effective_from: "2026-11-16T00:00:00Z"
+              default: 0
