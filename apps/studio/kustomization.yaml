@@ -10,3 +10,6 @@ configMapGenerator:
   - name: studio-product-values
     files:
       - values.yaml=values.yaml
+  - name: studio-mcp-pricing-values
+    files:
+      - values.yaml=../../products/studio/mcp-pricing.yaml
