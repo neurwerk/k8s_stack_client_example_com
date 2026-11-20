@@ -4,4 +4,4 @@ metadata: {name: pipecat-addon, namespace: flux-system}
 spec:
   interval: 10m
   url: https://github.com/neurwerk/k8s_stack_addon_pipecat.git
-  ref: {commit: 5b805ed57e0a740c4c40f3123108073ac02945a9} # Immutable public add-on source.
+  ref: {commit: bc5a65c678c2333d3e9e2151f5d9befd9049c0d5} # Immutable public add-on source.

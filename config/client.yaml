@@ -188,10 +188,21 @@ pipecat:
   hostname: pipecat.example.com # Public Pipecat hostname; align its OIDC approval values.
 docling:
   enabled: true # Enable document and image text extraction.
-  inference:
-    mode: cpu # Run extraction in-cluster without another LLM backend.
+  mode: internal # Run the official CPU Serve image in-cluster.
+  # To use a complete private Serve instance, select external and configure:
+  # external:
+  #   url: https://docling.internal.example.com
+  #   allowHttp: false
+  #   cidrs: [10.20.30.40/32]
+  #   port: 443
+  #   caConfigMap: "" # Optional extProc namespace ConfigMap with key ca.crt.
+  # Optional public native API for an external HTTP IPv4 /32 backend:
+  # ingress: {enabled: true, host: docling.example.com}
+  # Callers supply X-Api-Key; publicCertificates selects the HTTPS issuer.
   documentTimeoutSeconds: 300 # Maximum extraction time for one document.
   syncWaitSeconds: 360 # Wait longer than the document timeout for synchronous callers.
+documentAttachments:
+  pages: 2 # Internal CPU example; set 250 explicitly for an external GPU instance.
 authKeycloak:
   hostname: auth.example.com # Public identity-provider hostname.
   realm: example # Tenant realm; update issuer URLs and onboarding settings together.

@@ -7,4 +7,4 @@ metadata:
 spec:
   interval: 1m
   url: https://github.com/neurwerk/k8s_stack_addon_librechat.git
-  ref: {commit: a62b07f55fc4481dba8305bafcdf48fdaeb0fe5f} # Immutable public add-on source.
+  ref: {commit: 7a2391057fd58494dc7efb5b0814dd050af07f5b} # Immutable public add-on source.

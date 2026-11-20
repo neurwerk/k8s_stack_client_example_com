@@ -7,4 +7,4 @@ metadata:
 spec:
   interval: 1m
   url: https://github.com/neurwerk/k8s_stack_addon_open_webui.git
-  ref: {commit: e8f72b99a90ad07834ade416a8f87a548dfd32fc} # Immutable public add-on source.
+  ref: {commit: ad3d50c9fa5bcb8820f231b6a3e0225db46c2055} # Immutable public add-on source.
